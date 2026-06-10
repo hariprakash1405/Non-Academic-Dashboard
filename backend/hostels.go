@@ -1,0 +1,788 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
+
+// --- Models ---
+
+type HostelFloorDetail struct {
+	ID              uint   `gorm:"primaryKey" json:"id"`
+	HostelBlockName string `gorm:"index" json:"hostelBlockName"`
+	FloorNumber     int    `json:"floorNumber"`
+	TotalRooms      int    `json:"totalRooms"`
+	RoomTypes       string `json:"roomTypes"`
+	TotalBeds       int    `json:"totalBeds"`
+}
+
+type HostelBlock struct {
+	Name                   string              `gorm:"primaryKey" json:"name"`
+	Beds                   int                 `json:"beds"`
+	Occupied               int                 `json:"occupied"`
+	Type                   string              `json:"type"`
+	Gender                 string              `json:"gender"`
+	StaffCount             int                 `json:"staffCount"`
+	Remarks                string              `json:"remarks"`
+	Wardens                []Warden            `gorm:"foreignKey:HostelBlockName" json:"wardens"`
+	ResidentList           []StudentDetail     `gorm:"foreignKey:HostelBlockName" json:"residentList"`
+	Complaints             []MaintenanceTicket `gorm:"foreignKey:HostelBlockName" json:"complaints"`
+
+	NumFloors              int                 `json:"numFloors"`
+	TotalRooms             int                 `json:"totalRooms"`
+	FloorDetails           []HostelFloorDetail `gorm:"foreignKey:HostelBlockName" json:"floorDetails"`
+
+	ChiefWardenCount       int                 `json:"chiefWardenCount"`
+	DeputyWardenCount      int                 `json:"deputyWardenCount"`
+	SeniorCaretakerCount   int                 `json:"seniorCaretakerCount"`
+	CareTakerAttenderCount int                 `json:"careTakerAttenderCount"`
+	HouseKeeperCount       int                 `json:"houseKeeperCount"`
+	BathroomCleanerCount   int                 `json:"bathroomCleanerCount"`
+	SecurityCount          int                 `json:"securityCount"`
+
+	VacantBeds             int                 `json:"vacantBeds"`
+	MaintenanceRoomsBeds   int                 `json:"maintenanceRoomsBeds"`
+
+	AllocatedCapacity      int                 `json:"allocatedCapacity"`
+	WaterCoolersCount      int                 `json:"waterCoolersCount"`
+	BathroomsPerFloor      float64             `json:"bathroomsPerFloor"`
+	ToiletsPerFloor        float64             `json:"toiletsPerFloor"`
+	SolarHeaterCapacity    string              `json:"solarHeaterCapacity"`
+	WifiAccessPoints       int                 `json:"wifiAccessPoints"`
+	CctvCameras            int                 `json:"cctvCameras"`
+	CaretakerCount         int                 `json:"caretakerCount"`
+	CommonRoom             string              `json:"commonRoom"`
+	ReadingRoom            string              `json:"readingRoom"`
+	ParentWaitingRoom      string              `json:"parentWaitingRoom"`
+}
+
+type Warden struct {
+	Phone           string `gorm:"primaryKey" json:"phone"`
+	HostelBlockName string `json:"-"`
+	Name            string `json:"name"`
+	Role            string `json:"role"` // "Warden" or "Support Staff"
+	Floor           string `json:"floor"`
+}
+
+type StudentDetail struct {
+	RollNo          string `gorm:"primaryKey" json:"rollNo"`
+	HostelBlockName string `json:"-"`
+	Name            string `json:"name"`
+	RoomNo          string `json:"roomNo"`
+}
+
+type MaintenanceTicket struct {
+	ID              string `gorm:"primaryKey" json:"id"`
+	HostelBlockName string `json:"-"`
+	Block           string `json:"block"`
+	UnitNo          string `json:"unitNo"`
+	Type            string `json:"type"`
+	Desc            string `json:"desc"`
+	Priority        string `json:"priority"`
+	TAT             string `json:"tat"`
+	Status          string `json:"status"` // "Ongoing", "Resolved", "Pending"
+	Date            string `json:"date"`
+	AssignedHead    string `json:"assignedHead"`
+}
+
+type DailyUsage struct {
+	ID    uint    `gorm:"primaryKey" json:"-"`
+	Block string  `gorm:"uniqueIndex:idx_block_date" json:"block"`
+	Date  string  `gorm:"uniqueIndex:idx_block_date" json:"date"`
+	Water float64 `json:"water"`
+	Power float64 `json:"power"`
+}
+
+// --- Handlers ---
+
+func handleGetHostels(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	if DB == nil {
+		http.Error(w, "Database not connected", http.StatusInternalServerError)
+		return
+	}
+
+	var blocks []HostelBlock
+	DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+
+	// Self-healing: Ensure existing DB records perfectly match actual array lengths
+	for i := range blocks {
+		actualOccupied := len(blocks[i].ResidentList) + len(blocks[i].Wardens)
+		if blocks[i].Occupied != actualOccupied {
+			blocks[i].Occupied = actualOccupied
+			blocks[i].VacantBeds = blocks[i].Beds - actualOccupied
+			DB.Model(&HostelBlock{}).Where("name = ?", blocks[i].Name).Updates(map[string]interface{}{
+				"occupied":    blocks[i].Occupied,
+				"vacant_beds": blocks[i].VacantBeds,
+			})
+		}
+	}
+
+	var usages []DailyUsage
+	DB.Find(&usages)
+
+	usageMap := make(map[string][]DailyUsage)
+	for _, u := range usages {
+		usageMap[u.Block] = append(usageMap[u.Block], u)
+	}
+
+	var maintenance []MaintenanceTicket
+	DB.Find(&maintenance)
+
+	response := map[string]interface{}{
+		"blocks":      blocks,
+		"dailyUsage":  usageMap,
+		"maintenance": maintenance,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func handleUpdateUsage(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if DB == nil {
+		http.Error(w, "Database not connected", http.StatusInternalServerError)
+		return
+	}
+
+	var input struct {
+		Block  string `json:"block"`
+		Values struct {
+			Water       string `json:"water"`
+			Electricity string `json:"electricity"`
+			Occupancy   string `json:"occupancy"`
+			Complaints  string `json:"complaints"`
+		} `json:"values"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+
+	targetDate := time.Now().Format("02 Jan")
+	if input.Block != "" {
+		var existing DailyUsage
+		err := DB.Where("block = ? AND date = ?", input.Block, targetDate).First(&existing).Error
+		if err == nil {
+			// Merge and update existing record
+			if input.Values.Water != "" {
+				fmt.Sscanf(input.Values.Water, "%f", &existing.Water)
+			}
+			if input.Values.Electricity != "" {
+				fmt.Sscanf(input.Values.Electricity, "%f", &existing.Power)
+			}
+			DB.Save(&existing)
+		} else {
+			// Create a new record
+			newUsage := DailyUsage{
+				Block: input.Block,
+				Date:  targetDate,
+			}
+			if input.Values.Water != "" {
+				fmt.Sscanf(input.Values.Water, "%f", &newUsage.Water)
+			}
+			if input.Values.Electricity != "" {
+				fmt.Sscanf(input.Values.Electricity, "%f", &newUsage.Power)
+			}
+			DB.Create(&newUsage)
+		}
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	fmt.Fprintf(w, "Data updated successfully")
+}
+
+func handleUpdateBlock(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if DB == nil {
+		http.Error(w, "Database not connected", http.StatusInternalServerError)
+		return
+	}
+
+	var input HostelBlock
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if input.Name == "" {
+		http.Error(w, "Block name is required", http.StatusBadRequest)
+		return
+	}
+
+	var existing HostelBlock
+	exists := false
+	if err := DB.First(&existing, "name = ?", input.Name).Error; err == nil {
+		exists = true
+	}
+
+	// Validation and Merging Logic
+	if !exists {
+		// New block requires total beds and occupied
+		if input.Beds <= 0 {
+			http.Error(w, "Total beds capacity is required for a new block", http.StatusBadRequest)
+			return
+		}
+		if input.Occupied <= 0 {
+			http.Error(w, "No. of students (occupied) is required for a new block", http.StatusBadRequest)
+			return
+		}
+	} else {
+		// Existing block: beds, occupied, and staff count are optional
+		if input.Beds <= 0 {
+			input.Beds = existing.Beds
+		}
+		if input.Occupied <= 0 {
+			input.Occupied = existing.Occupied
+		}
+		if input.Type == "" {
+			input.Type = existing.Type
+		}
+		if input.Gender == "" {
+			input.Gender = existing.Gender
+		}
+		if input.StaffCount <= 0 {
+			input.StaffCount = existing.StaffCount
+		}
+	}
+
+	// Strict Data Consistency Checks
+	if input.Occupied > input.Beds {
+		http.Error(w, fmt.Sprintf("Validation Error: No. of students (occupied: %d) cannot exceed total beds capacity (beds: %d)", input.Occupied, input.Beds), http.StatusBadRequest)
+		return
+	}
+
+	// Filter out empty rows (similar to the frontend) before checking length
+	var cleanedResidents []StudentDetail
+	for _, res := range input.ResidentList {
+		if res.Name != "" || res.RollNo != "" || res.RoomNo != "" {
+			cleanedResidents = append(cleanedResidents, res)
+		}
+	}
+	input.ResidentList = cleanedResidents
+
+	// We dynamically calculate exact occupancy based on the actual objects provided
+	input.Occupied = len(input.ResidentList) + len(input.Wardens)
+	input.VacantBeds = input.Beds - input.Occupied
+
+	var cleanedWardens []Warden
+	for _, w := range input.Wardens {
+		if w.Name != "" || w.Phone != "" {
+			cleanedWardens = append(cleanedWardens, w)
+		}
+	}
+	input.Wardens = cleanedWardens
+
+	if len(input.Wardens) == 0 {
+		http.Error(w, "Validation Error: At least one Warden or Support Staff detail is required", http.StatusBadRequest)
+		return
+	}
+
+	// GORM Transaction to securely update block and overwrite collections
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		// Clear old associated records so additions/removals are applied completely
+		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&Warden{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&StudentDetail{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&HostelFloorDetail{}).Error; err != nil {
+			return err
+		}
+
+		// Save the block (temporarily clear complaints from input to avoid bulk insertion conflicts)
+		complaints := input.Complaints
+		input.Complaints = nil
+
+		if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&input).Error; err != nil {
+			return err
+		}
+
+		// Upsert only the newly given daily complaints / tickets
+		for _, ticket := range complaints {
+			ticket.HostelBlockName = input.Name
+			if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&ticket).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		http.Error(w, "Error saving to database: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var blocks []HostelBlock
+	DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(blocks)
+}
+
+func handleRaiseComplaint(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if DB == nil {
+		http.Error(w, "Database not connected", http.StatusInternalServerError)
+		return
+	}
+
+	var ticket MaintenanceTicket
+	if err := json.NewDecoder(r.Body).Decode(&ticket); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if ticket.Block == "" {
+		http.Error(w, "Block name is required", http.StatusBadRequest)
+		return
+	}
+	if ticket.Type == "" {
+		http.Error(w, "Complaint category is required", http.StatusBadRequest)
+		return
+	}
+	if ticket.Desc == "" {
+		http.Error(w, "Description is required", http.StatusBadRequest)
+		return
+	}
+
+	// Generate ID if empty
+	if ticket.ID == "" {
+		ticket.ID = fmt.Sprintf("TKT-%d", time.Now().UnixNano()/1e6 % 100000)
+	}
+	if ticket.Date == "" {
+		ticket.Date = time.Now().Format("02 Jan")
+	}
+	if ticket.Status == "" {
+		ticket.Status = "Pending"
+	}
+	if ticket.TAT == "" {
+		ticket.TAT = "24 Hours" // Default TAT
+	}
+	ticket.HostelBlockName = ticket.Block
+
+	// Save to DB
+	if err := DB.Clauses(clause.OnConflict{UpdateAll: true}).Create(&ticket).Error; err != nil {
+		http.Error(w, "Error saving complaint: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Fetch all blocks to return updated state
+	var blocks []HostelBlock
+	DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(blocks)
+}
+
+func handleUpdateComplaintStatus(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if DB == nil {
+		http.Error(w, "Database not connected", http.StatusInternalServerError)
+		return
+	}
+
+	var input struct {
+		ID     string `json:"id"`
+		Status string `json:"status"` // "Ongoing", "Resolved", "Pending"
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var ticket MaintenanceTicket
+	if err := DB.First(&ticket, "id = ?", input.ID).Error; err != nil {
+		http.Error(w, "Ticket not found", http.StatusNotFound)
+		return
+	}
+
+	ticket.Status = input.Status
+	if input.Status == "Resolved" {
+		ticket.TAT = "Completed"
+	}
+	DB.Save(&ticket)
+
+	// Fetch all blocks to return updated state
+	var blocks []HostelBlock
+	DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(blocks)
+}
+
+func handleRenameBlock(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if DB == nil {
+		http.Error(w, "Database not connected", http.StatusInternalServerError)
+		return
+	}
+
+	var req struct {
+		OldName string `json:"oldName"`
+		NewName string `json:"newName"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.OldName == "" || req.NewName == "" {
+		http.Error(w, "Old name and new name are required", http.StatusBadRequest)
+		return
+	}
+
+	// Transaction to safely update primary key and cascade references
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		// 1. Check if new name already exists
+		var existing HostelBlock
+		if err := tx.Where("name = ?", req.NewName).First(&existing).Error; err == nil {
+			return fmt.Errorf("a block named '%s' already exists", req.NewName)
+		}
+
+		// 2. Fetch the existing block
+		var block HostelBlock
+		if err := tx.Where("name = ?", req.OldName).First(&block).Error; err != nil {
+			return fmt.Errorf("block '%s' not found", req.OldName)
+		}
+
+		// 3. Since GORM doesn't natively support primary key changes with CASCADE out-of-the-box,
+		// we update using raw SQL queries under replica session role to bypass primary key catch-22 constraint errors.
+		if err := tx.Exec("SET session_replication_role = 'replica';").Error; err != nil {
+			return err
+		}
+
+		// Update hostel_blocks name
+		if err := tx.Exec("UPDATE hostel_blocks SET name = ? WHERE name = ?", req.NewName, req.OldName).Error; err != nil {
+			tx.Exec("SET session_replication_role = 'origin';")
+			return err
+		}
+
+		// Update wardens references
+		if err := tx.Exec("UPDATE wardens SET hostel_block_name = ? WHERE hostel_block_name = ?", req.NewName, req.OldName).Error; err != nil {
+			tx.Exec("SET session_replication_role = 'origin';")
+			return err
+		}
+
+		// Update student_details references
+		if err := tx.Exec("UPDATE student_details SET hostel_block_name = ? WHERE hostel_block_name = ?", req.NewName, req.OldName).Error; err != nil {
+			tx.Exec("SET session_replication_role = 'origin';")
+			return err
+		}
+
+		// Update hostel_floor_details references
+		if err := tx.Exec("UPDATE hostel_floor_details SET hostel_block_name = ? WHERE hostel_block_name = ?", req.NewName, req.OldName).Error; err != nil {
+			tx.Exec("SET session_replication_role = 'origin';")
+			return err
+		}
+
+		// Update maintenance_tickets references & Block text field
+		if err := tx.Exec("UPDATE maintenance_tickets SET hostel_block_name = ?, block = ? WHERE hostel_block_name = ?", req.NewName, req.NewName, req.OldName).Error; err != nil {
+			tx.Exec("SET session_replication_role = 'origin';")
+			return err
+		}
+
+		// Update daily_usages block names
+		if err := tx.Exec("UPDATE daily_usages SET block = ? WHERE block = ?", req.NewName, req.OldName).Error; err != nil {
+			tx.Exec("SET session_replication_role = 'origin';")
+			return err
+		}
+
+		// Restore default trigger checks
+		if err := tx.Exec("SET session_replication_role = 'origin';").Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Fetch fresh data and return
+	var blocks []HostelBlock
+	DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(blocks)
+}
+
+func handleAddBlock(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if DB == nil {
+		http.Error(w, "Database not connected", http.StatusInternalServerError)
+		return
+	}
+
+	var req struct {
+		Name                   string              `json:"name"`
+		Beds                   int                 `json:"beds"`
+		Occupied               int                 `json:"occupied"`
+		Type                   string              `json:"type"`
+		Gender                 string              `json:"gender"`
+		StaffCount             int                 `json:"staffCount"`
+		Remarks                string              `json:"remarks"`
+		WardenName             string              `json:"wardenName"`
+		WardenPhone            string              `json:"wardenPhone"`
+		NumFloors              int                 `json:"numFloors"`
+		TotalRooms             int                 `json:"totalRooms"`
+		FloorDetails           []HostelFloorDetail `json:"floorDetails"`
+		ChiefWardenCount       int                 `json:"chiefWardenCount"`
+		DeputyWardenCount      int                 `json:"deputyWardenCount"`
+		SeniorCaretakerCount   int                 `json:"seniorCaretakerCount"`
+		CareTakerAttenderCount int                 `json:"careTakerAttenderCount"`
+		HouseKeeperCount       int                 `json:"houseKeeperCount"`
+		BathroomCleanerCount   int                 `json:"bathroomCleanerCount"`
+		SecurityCount          int                 `json:"securityCount"`
+		VacantBeds             int                 `json:"vacantBeds"`
+		MaintenanceRoomsBeds   int                 `json:"maintenanceRoomsBeds"`
+
+		AllocatedCapacity      int                 `json:"allocatedCapacity"`
+		WaterCoolersCount      int                 `json:"waterCoolersCount"`
+		BathroomsPerFloor      float64             `json:"bathroomsPerFloor"`
+		ToiletsPerFloor        float64             `json:"toiletsPerFloor"`
+		SolarHeaterCapacity    string              `json:"solarHeaterCapacity"`
+		WifiAccessPoints       int                 `json:"wifiAccessPoints"`
+		CctvCameras            int                 `json:"cctvCameras"`
+		CaretakerCount         int                 `json:"caretakerCount"`
+		CommonRoom             string              `json:"commonRoom"`
+		ReadingRoom            string              `json:"readingRoom"`
+		ParentWaitingRoom      string              `json:"parentWaitingRoom"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" {
+		http.Error(w, "Block name is required", http.StatusBadRequest)
+		return
+	}
+	if req.Beds < 0 {
+		http.Error(w, "Total beds capacity cannot be negative", http.StatusBadRequest)
+		return
+	}
+	if req.Occupied < 0 {
+		http.Error(w, "Occupied count cannot be negative", http.StatusBadRequest)
+		return
+	}
+
+	// Check if already exists
+	var existing HostelBlock
+	if err := DB.Where("name = ?", req.Name).First(&existing).Error; err == nil {
+		http.Error(w, fmt.Sprintf("A block named '%s' already exists", req.Name), http.StatusBadRequest)
+		return
+	}
+
+	// Seed transaction
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		newBlock := HostelBlock{
+			Name:                   req.Name,
+			Beds:                   req.Beds,
+			Occupied:               req.Occupied,
+			Type:                   req.Type,
+			Gender:                 req.Gender,
+			StaffCount:             req.StaffCount,
+			Remarks:                req.Remarks,
+			NumFloors:              req.NumFloors,
+			TotalRooms:             req.TotalRooms,
+			FloorDetails:           req.FloorDetails,
+			ChiefWardenCount:       req.ChiefWardenCount,
+			DeputyWardenCount:      req.DeputyWardenCount,
+			SeniorCaretakerCount:   req.SeniorCaretakerCount,
+			CareTakerAttenderCount: req.CareTakerAttenderCount,
+			HouseKeeperCount:       req.HouseKeeperCount,
+			BathroomCleanerCount:   req.BathroomCleanerCount,
+			SecurityCount:          req.SecurityCount,
+			VacantBeds:             req.VacantBeds,
+			MaintenanceRoomsBeds:   req.MaintenanceRoomsBeds,
+			AllocatedCapacity:      req.AllocatedCapacity,
+			WaterCoolersCount:      req.WaterCoolersCount,
+			BathroomsPerFloor:      req.BathroomsPerFloor,
+			ToiletsPerFloor:        req.ToiletsPerFloor,
+			SolarHeaterCapacity:    req.SolarHeaterCapacity,
+			WifiAccessPoints:       req.WifiAccessPoints,
+			CctvCameras:            req.CctvCameras,
+			CaretakerCount:         req.CaretakerCount,
+			CommonRoom:             req.CommonRoom,
+			ReadingRoom:            req.ReadingRoom,
+			ParentWaitingRoom:      req.ParentWaitingRoom,
+		}
+
+		if err := tx.Create(&newBlock).Error; err != nil {
+			return err
+		}
+
+		// Create default warden if provided
+		if req.WardenName != "" && req.WardenPhone != "" {
+			w := Warden{
+				Name:            req.WardenName,
+				Phone:           req.WardenPhone,
+				HostelBlockName: req.Name,
+				Role:            "Warden",
+			}
+			if err := tx.Create(&w).Error; err != nil {
+				return err
+			}
+		}
+
+		// Seed a default usage record for today
+		targetDate := time.Now().Format("02 Jan")
+		usage := DailyUsage{
+			Block: req.Name,
+			Date:  targetDate,
+			Water: 0.0,
+			Power: 0.0,
+		}
+		if err := tx.Create(&usage).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var blocks []HostelBlock
+	DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(blocks)
+}
+
+func handleDeleteBlock(w http.ResponseWriter, r *http.Request) {
+	enableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if DB == nil {
+		http.Error(w, "Database not connected", http.StatusInternalServerError)
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" {
+		http.Error(w, "Block name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Transaction to delete block and all associated records cascadingly
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		// Delete Wardens
+		if err := tx.Exec("DELETE FROM wardens WHERE hostel_block_name = ?", req.Name).Error; err != nil {
+			return err
+		}
+		// Delete Student Details
+		if err := tx.Exec("DELETE FROM student_details WHERE hostel_block_name = ?", req.Name).Error; err != nil {
+			return err
+		}
+		// Delete Floor Details
+		if err := tx.Exec("DELETE FROM hostel_floor_details WHERE hostel_block_name = ?", req.Name).Error; err != nil {
+			return err
+		}
+		// Delete Maintenance Tickets
+		if err := tx.Exec("DELETE FROM maintenance_tickets WHERE hostel_block_name = ?", req.Name).Error; err != nil {
+			return err
+		}
+		// Delete Daily Usages
+		if err := tx.Exec("DELETE FROM daily_usages WHERE block = ?", req.Name).Error; err != nil {
+			return err
+		}
+		// Delete Hostel Block
+		if err := tx.Exec("DELETE FROM hostel_blocks WHERE name = ?", req.Name).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return updated block list
+	var blocks []HostelBlock
+	DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(blocks)
+}
