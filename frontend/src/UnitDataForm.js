@@ -676,15 +676,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         if (!confirmOverwrite) return;
       }
 
-      // Basic mandatory validation
-      if (!currentBlockData.occupied || currentBlockData.occupied <= 0) {
-        alert("Validation Error: Daily Occupied Student Count is mandatory and must be greater than 0.");
-        return;
-      }
-      if (!currentBlockData.beds || currentBlockData.beds <= 0) {
-        alert("Validation Error: Monthly Beds Capacity is mandatory and must be greater than 0.");
-        return;
-      }
+      // Beds and occupancy will be validated after calculating the cleaned values.
       if (values.water !== undefined && values.water !== '') {
         const waterVal = parseFloat(values.water);
         if (isNaN(waterVal) || waterVal < 0) { alert('Validation Error: Water Usage must be a valid non-negative number.'); return; }
@@ -714,10 +706,15 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                        (parseInt(currentBlockData.bathroomCleanerCount) || 0) +
                        (parseInt(currentBlockData.securityCount) || 0);
 
+      // Support staff like cleaners and security do not occupy beds
+      const nonResidentRoles = ['bathroom cleaner', 'house keeper', 'security personnel'];
+      const occupyingStaffCount = cleanedWardens.filter(w => !w.role || !nonResidentRoles.includes(w.role.toLowerCase())).length;
+      const totalOccupied = cleanedResidents.length + occupyingStaffCount;
+
       const cleanedBlockData = {
         ...currentBlockData,
         beds: parseInt(currentBlockData.beds) || 0,
-        occupied: cleanedResidents.length + cleanedWardens.length,
+        occupied: totalOccupied,
         numFloors: parseInt(currentBlockData.numFloors) || 0,
         totalRooms: parseInt(currentBlockData.totalRooms) || 0,
         chiefWardenCount: parseInt(currentBlockData.chiefWardenCount) || 0,
@@ -727,7 +724,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         houseKeeperCount: parseInt(currentBlockData.houseKeeperCount) || 0,
         bathroomCleanerCount: parseInt(currentBlockData.bathroomCleanerCount) || 0,
         securityCount: parseInt(currentBlockData.securityCount) || 0,
-        vacantBeds: (parseInt(currentBlockData.beds) || 0) - (cleanedResidents.length + cleanedWardens.length),
+        vacantBeds: (parseInt(currentBlockData.beds) || 0) - totalOccupied,
         maintenanceRoomsBeds: parseInt(currentBlockData.maintenanceRoomsBeds) || 0,
         allocatedCapacity: parseInt(currentBlockData.allocatedCapacity) || 0,
         waterCoolersCount: parseInt(currentBlockData.waterCoolersCount) || 0,
@@ -872,7 +869,10 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         blockName: values.blockName,
         breakfast: parseInt(values.breakfast) || 0,
         lunch: parseInt(values.lunch) || 0,
-        dinner: parseInt(values.dinner) || 0
+        dinner: parseInt(values.dinner) || 0,
+        breakfastCount: parseInt(values.breakfastCount) || 0,
+        lunchCount: parseInt(values.lunchCount) || 0,
+        dinnerCount: parseInt(values.dinnerCount) || 0
       };
 
       const response = await fetch('http://localhost:8085/api/mess/log-waste', {
@@ -2108,6 +2108,30 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                     <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       Dinner Waste (KG)
                       <input type="number" min="0" value={v.dinner || ''} onChange={e => onChange('dinner', e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #ccc' }} placeholder="e.g. 18" />
+                    </label>
+                  )}
+                </div>
+              </div>
+              
+              <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '20px' }}>
+                <h4 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>Food Taken Count (People)</h4>
+                <div style={{ display: 'flex', gap: '16px' }}>
+                  {v.blockName !== 'Boys Day Scholar' && (
+                    <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      Breakfast Count
+                      <input type="number" min="0" value={v.breakfastCount || ''} onChange={e => onChange('breakfastCount', e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #ccc' }} placeholder="e.g. 350" />
+                    </label>
+                  )}
+                  
+                  <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    Lunch Count
+                    <input type="number" min="0" value={v.lunchCount || ''} onChange={e => onChange('lunchCount', e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #ccc' }} placeholder="e.g. 400" />
+                  </label>
+
+                  {v.blockName !== 'Boys Day Scholar' && (
+                    <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      Dinner Count
+                      <input type="number" min="0" value={v.dinnerCount || ''} onChange={e => onChange('dinnerCount', e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #ccc' }} placeholder="e.g. 380" />
                     </label>
                   )}
                 </div>

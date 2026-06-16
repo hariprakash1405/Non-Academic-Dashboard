@@ -1,103 +1,50 @@
-package main
+package handlers
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
+
+	"backend/models"
 )
 
-type PlumbingMotor struct {
-	ID            uint   `gorm:"primaryKey" json:"id"`
-	MotorID       string `json:"motorId"`
-	Location      string `json:"location"`
-	Type          string `json:"type"`
-	Power         string `json:"power"`
-	OpHours       string `json:"opHours"`
-	NextService   string `json:"nextService"`
-	Status        string  `json:"status"`
-	ConnectedTank string  `json:"connectedTank"`
-	Kw            float64 `gorm:"-" json:"kw"`
-	Kwh           float64 `gorm:"-" json:"kwh"`
-}
-
-type PlumbingSump struct {
-	ID        uint    `gorm:"primaryKey" json:"id"`
-	SumpID    string  `json:"sumpId"`
-	Location  string  `json:"location"`
-	Length    float64 `json:"length"`
-	Width     float64 `json:"width"`
-	Depth     float64 `json:"depth"`
-	CubicFt   float64 `json:"cubicFt"`
-	Capacity  int     `json:"capacity"`
-	ZoneType  string  `json:"zoneType"`
-	Status    string  `json:"status"`
-}
-
-type PlumbingOHT struct {
-	ID          uint    `gorm:"primaryKey" json:"id"`
-	OHTID       string  `json:"ohtId"`
-	Location    string  `json:"location"`
-	Length      float64 `json:"length"`
-	Width       float64 `json:"width"`
-	Depth       float64 `json:"depth"`
-	CubicFt     float64 `json:"cubicFt"`
-	Capacity    int     `json:"capacity"`
-	ZoneType    string  `json:"zoneType"`
-	LastCleaned string  `json:"lastCleaned"`
-	Status      string  `json:"status"`
-}
-
-type PlumbingManpower struct {
-	ID           uint   `gorm:"primaryKey" json:"id"`
-	EmpID        string `json:"empId"`
-	Name         string `json:"name"`
-	Designation  string `json:"designation"`
-	Contact      string `json:"contact"`
-	Skill        string `json:"skill"`
-	Type         string `json:"type"`
-	Shift        string `json:"shift"`
-	Status       string `json:"status"`
-	Attendance   string `json:"attendance"`
-	AssignedArea string `json:"assignedArea"`
-}
-
-type PlumbingRuntimeLog struct {
-	ID         uint   `gorm:"primaryKey" json:"id"`
-	Date       string `json:"date"`
-	MotorID    string `json:"motorId"`
-	PeakRun    string `json:"peakRun"`
-	OffPeakRun string `json:"offPeakRun"`
-	NightRun   string `json:"nightRun"`
-	S1         string `json:"s1"`
-	S2         string `json:"s2"`
-	S3         string `json:"s3"`
-	S4         string `json:"s4"`
-}
-
-func handleGetPlumbing(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) GetPlumbing(w http.ResponseWriter, r *http.Request) {
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	var motors []PlumbingMotor
-	var sumps []PlumbingSump
-	var ohts []PlumbingOHT
-	var manpower []PlumbingManpower
-	var runtimes []PlumbingRuntimeLog
+	PlumbingCache.mu.RLock()
+	if time.Since(PlumbingCache.lastUpdate) < PlumbingCache.ttl && PlumbingCache.data != nil {
+		PlumbingCache.mu.RUnlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(PlumbingCache.data)
+		return
+	}
+	PlumbingCache.mu.RUnlock()
 
-	DB.Find(&motors)
-	DB.Find(&sumps)
-	DB.Find(&ohts)
-	DB.Find(&manpower)
-	DB.Find(&runtimes)
+
+	
+
+	var motors []models.PlumbingMotor
+	var sumps []models.PlumbingSump
+	var ohts []models.PlumbingOHT
+	var manpower []models.PlumbingManpower
+	var runtimes []models.PlumbingRuntimeLog
+
+	h.DB.Find(&motors)
+	h.DB.Find(&sumps)
+	h.DB.Find(&ohts)
+	h.DB.Find(&manpower)
+	h.DB.Find(&runtimes)
 
 	for i := range motors {
 		var hp float64
 		fmt.Sscanf(motors[i].Power, "%f", &hp)
-		
+
 		kw := (hp * 745.7) / 1000
 		motors[i].Kw = kw
 
@@ -121,138 +68,188 @@ func handleGetPlumbing(w http.ResponseWriter, r *http.Request) {
 		motors[i].Kwh = kw * hrs
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	payload := map[string]interface{}{
 		"motors":   motors,
 		"sumps":    sumps,
 		"ohts":     ohts,
 		"manpower": manpower,
 		"runtimes": runtimes,
-	})
+	}
+	jsonData, err := json.Marshal(payload)
+	if err == nil {
+		PlumbingCache.mu.Lock()
+		PlumbingCache.data = jsonData
+		PlumbingCache.lastUpdate = time.Now()
+		PlumbingCache.mu.Unlock()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err == nil {
+		w.Write(jsonData)
+	} else {
+		json.NewEncoder(w).Encode(payload)
+	}
 }
 
-func handleAddPlumbingMotors(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) AddPlumbingMotors(w http.ResponseWriter, r *http.Request) {
+	PlumbingCache.mu.Lock()
+	PlumbingCache.data = nil
+	PlumbingCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	var data []PlumbingMotor
+	var data []models.PlumbingMotor
 	if err := json.NewDecoder(r.Body).Decode(&data); err == nil {
 		for _, v := range data {
-			DB.Create(&v)
+			h.DB.Create(&v)
 		}
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleDeletePlumbingMotor(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) DeletePlumbingMotor(w http.ResponseWriter, r *http.Request) {
+	PlumbingCache.mu.Lock()
+	PlumbingCache.data = nil
+	PlumbingCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	id := r.URL.Query().Get("id")
 	if id != "" {
-		DB.Delete(&PlumbingMotor{}, id)
+		h.DB.Delete(&models.PlumbingMotor{}, id)
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleAddPlumbingSumps(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) AddPlumbingSumps(w http.ResponseWriter, r *http.Request) {
+	PlumbingCache.mu.Lock()
+	PlumbingCache.data = nil
+	PlumbingCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	var data []PlumbingSump
+	var data []models.PlumbingSump
 	if err := json.NewDecoder(r.Body).Decode(&data); err == nil {
 		for _, v := range data {
-			DB.Create(&v)
+			h.DB.Create(&v)
 		}
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleDeletePlumbingSump(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) DeletePlumbingSump(w http.ResponseWriter, r *http.Request) {
+	PlumbingCache.mu.Lock()
+	PlumbingCache.data = nil
+	PlumbingCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	id := r.URL.Query().Get("id")
 	if id != "" {
-		DB.Delete(&PlumbingSump{}, id)
+		h.DB.Delete(&models.PlumbingSump{}, id)
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleAddPlumbingOHTs(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) AddPlumbingOHTs(w http.ResponseWriter, r *http.Request) {
+	PlumbingCache.mu.Lock()
+	PlumbingCache.data = nil
+	PlumbingCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	var data []PlumbingOHT
+	var data []models.PlumbingOHT
 	if err := json.NewDecoder(r.Body).Decode(&data); err == nil {
 		for _, v := range data {
-			DB.Create(&v)
+			h.DB.Create(&v)
 		}
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleDeletePlumbingOHT(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) DeletePlumbingOHT(w http.ResponseWriter, r *http.Request) {
+	PlumbingCache.mu.Lock()
+	PlumbingCache.data = nil
+	PlumbingCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	id := r.URL.Query().Get("id")
 	if id != "" {
-		DB.Delete(&PlumbingOHT{}, id)
+		h.DB.Delete(&models.PlumbingOHT{}, id)
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleAddPlumbingManpower(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) AddPlumbingManpower(w http.ResponseWriter, r *http.Request) {
+	PlumbingCache.mu.Lock()
+	PlumbingCache.data = nil
+	PlumbingCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	var data []PlumbingManpower
+	var data []models.PlumbingManpower
 	if err := json.NewDecoder(r.Body).Decode(&data); err == nil {
 		for _, v := range data {
-			DB.Create(&v)
+			h.DB.Create(&v)
 		}
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleDeletePlumbingManpower(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) DeletePlumbingManpower(w http.ResponseWriter, r *http.Request) {
+	PlumbingCache.mu.Lock()
+	PlumbingCache.data = nil
+	PlumbingCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	id := r.URL.Query().Get("id")
 	if id != "" {
-		DB.Delete(&PlumbingManpower{}, id)
+		h.DB.Delete(&models.PlumbingManpower{}, id)
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleAddPlumbingRuntime(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) AddPlumbingRuntime(w http.ResponseWriter, r *http.Request) {
+	PlumbingCache.mu.Lock()
+	PlumbingCache.data = nil
+	PlumbingCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	var data []PlumbingRuntimeLog
+	var data []models.PlumbingRuntimeLog
 	if err := json.NewDecoder(r.Body).Decode(&data); err == nil {
 		for _, v := range data {
-			var existing PlumbingRuntimeLog
-			if DB.Where("date = ? AND motor_id = ?", v.Date, v.MotorID).First(&existing).Error == nil {
+			var existing models.PlumbingRuntimeLog
+			if h.DB.Where("date = ? AND motor_id = ?", v.Date, v.MotorID).First(&existing).Error == nil {
 				existing.PeakRun = v.PeakRun
 				existing.OffPeakRun = v.OffPeakRun
 				existing.NightRun = v.NightRun
@@ -260,20 +257,20 @@ func handleAddPlumbingRuntime(w http.ResponseWriter, r *http.Request) {
 				existing.S2 = v.S2
 				existing.S3 = v.S3
 				existing.S4 = v.S4
-				DB.Save(&existing)
+				h.DB.Save(&existing)
 			} else {
-				DB.Create(&v)
+				h.DB.Create(&v)
 			}
 		}
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func seedPlumbing() {
+func (h *APIHandler) Plumbing() {
 	var count int64
-	DB.Model(&PlumbingMotor{}).Count(&count)
+	h.DB.Model(&models.PlumbingMotor{}).Count(&count)
 	if count == 0 {
-		motors := []PlumbingMotor{
+		motors := []models.PlumbingMotor{
 			{MotorID: "MTR-01", Location: "Main Pump House", Type: "Submersible", Power: "10 HP", Status: "Active", NextService: "12-Jun-2026", ConnectedTank: "OHT-01"},
 			{MotorID: "MTR-02", Location: "STP Transfer", Type: "Centrifugal", Power: "5 HP", Status: "Active", NextService: "15-Jul-2026", ConnectedTank: "SMP-01"},
 			{MotorID: "MTR-03", Location: "Hostel Block A Sump", Type: "Submersible", Power: "7.5 HP", Status: "Maintenance", NextService: "01-Jun-2026", ConnectedTank: "SMP-02"},
@@ -281,13 +278,13 @@ func seedPlumbing() {
 			{MotorID: "MTR-05", Location: "Sports Complex Sump", Type: "Submersible", Power: "5 HP", Status: "Active", NextService: "05-Sep-2026", ConnectedTank: "SMP-03"},
 		}
 		for _, m := range motors {
-			DB.Create(&m)
+			h.DB.Create(&m)
 		}
 	}
 
-	DB.Model(&PlumbingSump{}).Count(&count)
+	h.DB.Model(&models.PlumbingSump{}).Count(&count)
 	if count == 0 {
-		sumps := []PlumbingSump{
+		sumps := []models.PlumbingSump{
 			{SumpID: "SMP-01", Location: "Main Tank (Sump)", Length: 25.25, Width: 26.00, Depth: 9.75, CubicFt: 6400.88, Capacity: 180000, ZoneType: "Main / Central", Status: "Active"},
 			{SumpID: "SMP-02", Location: "Narmada Hostel Sump", Length: 30.50, Width: 21.00, Depth: 10.00, CubicFt: 6405.00, Capacity: 181369, ZoneType: "Boys Hostel", Status: "Active"},
 			{SumpID: "SMP-03", Location: "Emerald Hostel Back Side Sump", Length: 40.00, Width: 11.00, Depth: 9.50, CubicFt: 4180.00, Capacity: 118364, ZoneType: "Girls Hostel", Status: "Active"},
@@ -300,13 +297,13 @@ func seedPlumbing() {
 			{SumpID: "SMP-10", Location: "Training Academy Sump - Treated", Length: 21.00, Width: 7.00, Depth: 6.00, CubicFt: 2988.00, Capacity: 40000, ZoneType: "Training Academy", Status: "Active"},
 		}
 		for _, s := range sumps {
-			DB.Create(&s)
+			h.DB.Create(&s)
 		}
 	}
 
-	DB.Model(&PlumbingOHT{}).Count(&count)
+	h.DB.Model(&models.PlumbingOHT{}).Count(&count)
 	if count == 0 {
-		ohts := []PlumbingOHT{
+		ohts := []models.PlumbingOHT{
 			{OHTID: "OHT-01", Location: "Main Tank OHT", Length: 24.00, Width: 24.00, Depth: 7.00, CubicFt: 4032.00, Capacity: 120000, ZoneType: "Main / Central", Status: "Active"},
 			{OHTID: "OHT-02", Location: "Sapphire Hostel (North-1)", Length: 21.00, Width: 7.00, Depth: 6.00, CubicFt: 2988.00, Capacity: 40000, ZoneType: "Girls Hostel", Status: "Active"},
 			{OHTID: "OHT-03", Location: "Sapphire Hostel (South-1)", Length: 21.00, Width: 7.00, Depth: 6.00, CubicFt: 2988.00, Capacity: 40000, ZoneType: "Girls Hostel", Status: "Active"},
@@ -352,7 +349,7 @@ func seedPlumbing() {
 			{OHTID: "OHT-44", Location: "Staff Quarters A to E Block (Type 2)", Length: 0.0, Width: 0.0, Depth: 0.0, CubicFt: 0.0, Capacity: 192000, ZoneType: "Staff Quarters", Status: "Active"},
 		}
 		for _, o := range ohts {
-			DB.Create(&o)
+			h.DB.Create(&o)
 		}
 	}
 }

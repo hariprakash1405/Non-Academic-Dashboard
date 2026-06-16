@@ -1,142 +1,79 @@
-package main
+package handlers
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"time"
-
+	"strings"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"fmt"
+	"backend/models"
+	"encoding/json"
+	"net/http"
+	
+	"time"
 )
+
+func isResidentWarden(role string) bool {
+	r := strings.ToLower(role)
+	return !(strings.Contains(r, "cleaner") || strings.Contains(r, "keeper") || strings.Contains(r, "security"))
+}
 
 // --- Models ---
 
-type HostelFloorDetail struct {
-	ID              uint   `gorm:"primaryKey" json:"id"`
-	HostelBlockName string `gorm:"index" json:"hostelBlockName"`
-	FloorNumber     int    `json:"floorNumber"`
-	TotalRooms      int    `json:"totalRooms"`
-	RoomTypes       string `json:"roomTypes"`
-	TotalBeds       int    `json:"totalBeds"`
-}
-
-type HostelBlock struct {
-	Name                   string              `gorm:"primaryKey" json:"name"`
-	Beds                   int                 `json:"beds"`
-	Occupied               int                 `json:"occupied"`
-	Type                   string              `json:"type"`
-	Gender                 string              `json:"gender"`
-	StaffCount             int                 `json:"staffCount"`
-	Remarks                string              `json:"remarks"`
-	Wardens                []Warden            `gorm:"foreignKey:HostelBlockName" json:"wardens"`
-	ResidentList           []StudentDetail     `gorm:"foreignKey:HostelBlockName" json:"residentList"`
-	Complaints             []MaintenanceTicket `gorm:"foreignKey:HostelBlockName" json:"complaints"`
-
-	NumFloors              int                 `json:"numFloors"`
-	TotalRooms             int                 `json:"totalRooms"`
-	FloorDetails           []HostelFloorDetail `gorm:"foreignKey:HostelBlockName" json:"floorDetails"`
-
-	ChiefWardenCount       int                 `json:"chiefWardenCount"`
-	DeputyWardenCount      int                 `json:"deputyWardenCount"`
-	SeniorCaretakerCount   int                 `json:"seniorCaretakerCount"`
-	CareTakerAttenderCount int                 `json:"careTakerAttenderCount"`
-	HouseKeeperCount       int                 `json:"houseKeeperCount"`
-	BathroomCleanerCount   int                 `json:"bathroomCleanerCount"`
-	SecurityCount          int                 `json:"securityCount"`
-
-	VacantBeds             int                 `json:"vacantBeds"`
-	MaintenanceRoomsBeds   int                 `json:"maintenanceRoomsBeds"`
-
-	AllocatedCapacity      int                 `json:"allocatedCapacity"`
-	WaterCoolersCount      int                 `json:"waterCoolersCount"`
-	BathroomsPerFloor      float64             `json:"bathroomsPerFloor"`
-	ToiletsPerFloor        float64             `json:"toiletsPerFloor"`
-	SolarHeaterCapacity    string              `json:"solarHeaterCapacity"`
-	WifiAccessPoints       int                 `json:"wifiAccessPoints"`
-	CctvCameras            int                 `json:"cctvCameras"`
-	CaretakerCount         int                 `json:"caretakerCount"`
-	CommonRoom             string              `json:"commonRoom"`
-	ReadingRoom            string              `json:"readingRoom"`
-	ParentWaitingRoom      string              `json:"parentWaitingRoom"`
-}
-
-type Warden struct {
-	Phone           string `gorm:"primaryKey" json:"phone"`
-	HostelBlockName string `json:"-"`
-	Name            string `json:"name"`
-	Role            string `json:"role"` // "Warden" or "Support Staff"
-	Floor           string `json:"floor"`
-}
-
-type StudentDetail struct {
-	RollNo          string `gorm:"primaryKey" json:"rollNo"`
-	HostelBlockName string `json:"-"`
-	Name            string `json:"name"`
-	RoomNo          string `json:"roomNo"`
-}
-
-type MaintenanceTicket struct {
-	ID              string `gorm:"primaryKey" json:"id"`
-	HostelBlockName string `json:"-"`
-	Block           string `json:"block"`
-	UnitNo          string `json:"unitNo"`
-	Type            string `json:"type"`
-	Desc            string `json:"desc"`
-	Priority        string `json:"priority"`
-	TAT             string `json:"tat"`
-	Status          string `json:"status"` // "Ongoing", "Resolved", "Pending"
-	Date            string `json:"date"`
-	AssignedHead    string `json:"assignedHead"`
-}
-
-type DailyUsage struct {
-	ID    uint    `gorm:"primaryKey" json:"-"`
-	Block string  `gorm:"uniqueIndex:idx_block_date" json:"block"`
-	Date  string  `gorm:"uniqueIndex:idx_block_date" json:"date"`
-	Water float64 `json:"water"`
-	Power float64 `json:"power"`
-}
-
 // --- Handlers ---
 
-func handleGetHostels(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" {
+func (h *APIHandler) GetHostels(w http.ResponseWriter, r *http.Request) {
+	EnableCors(&w)
+	if r.Method == "OPTIONS" { return }
+
+	HostelCache.mu.RLock()
+	if time.Since(HostelCache.lastUpdate) < HostelCache.ttl && HostelCache.data != nil {
+		HostelCache.mu.RUnlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(HostelCache.data)
 		return
 	}
+	HostelCache.mu.RUnlock()
 
-	if DB == nil {
+
+	
+
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var blocks []HostelBlock
-	DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	var blocks []models.HostelBlock
+	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
 
 	// Self-healing: Ensure existing DB records perfectly match actual array lengths
 	for i := range blocks {
-		actualOccupied := len(blocks[i].ResidentList) + len(blocks[i].Wardens)
+		occupyingWardens := 0
+		for _, w := range blocks[i].Wardens {
+			if isResidentWarden(w.Role) {
+				occupyingWardens++
+			}
+		}
+		actualOccupied := len(blocks[i].ResidentList) + occupyingWardens
 		if blocks[i].Occupied != actualOccupied {
 			blocks[i].Occupied = actualOccupied
 			blocks[i].VacantBeds = blocks[i].Beds - actualOccupied
-			DB.Model(&HostelBlock{}).Where("name = ?", blocks[i].Name).Updates(map[string]interface{}{
+			h.DB.Model(&models.HostelBlock{}).Where("name = ?", blocks[i].Name).Updates(map[string]interface{}{
 				"occupied":    blocks[i].Occupied,
 				"vacant_beds": blocks[i].VacantBeds,
 			})
 		}
 	}
 
-	var usages []DailyUsage
-	DB.Find(&usages)
+	var usages []models.DailyUsage
+	h.DB.Find(&usages)
 
-	usageMap := make(map[string][]DailyUsage)
+	usageMap := make(map[string][]models.DailyUsage)
 	for _, u := range usages {
 		usageMap[u.Block] = append(usageMap[u.Block], u)
 	}
 
-	var maintenance []MaintenanceTicket
-	DB.Find(&maintenance)
+	var maintenance []models.MaintenanceTicket
+	h.DB.Find(&maintenance)
 
 	response := map[string]interface{}{
 		"blocks":      blocks,
@@ -144,12 +81,32 @@ func handleGetHostels(w http.ResponseWriter, r *http.Request) {
 		"maintenance": maintenance,
 	}
 
+	
+	
+
+
+	jsonData, err := json.Marshal(response)
+	if err == nil {
+		HostelCache.mu.Lock()
+		HostelCache.data = jsonData
+		HostelCache.lastUpdate = time.Now()
+		HostelCache.mu.Unlock()
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err == nil {
+		w.Write(jsonData)
+	} else {
+		json.NewEncoder(w).Encode(response)
+	}
 }
 
-func handleUpdateUsage(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) UpdateUsage(w http.ResponseWriter, r *http.Request) {
+	HostelCache.mu.Lock()
+	HostelCache.data = nil
+	HostelCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -158,7 +115,7 @@ func handleUpdateUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
@@ -178,11 +135,10 @@ func handleUpdateUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	targetDate := time.Now().Format("02 Jan")
 	if input.Block != "" {
-		var existing DailyUsage
-		err := DB.Where("block = ? AND date = ?", input.Block, targetDate).First(&existing).Error
+		var existing models.DailyUsage
+		err := h.DB.Where("block = ? AND date = ?", input.Block, targetDate).First(&existing).Error
 		if err == nil {
 			// Merge and update existing record
 			if input.Values.Water != "" {
@@ -191,10 +147,10 @@ func handleUpdateUsage(w http.ResponseWriter, r *http.Request) {
 			if input.Values.Electricity != "" {
 				fmt.Sscanf(input.Values.Electricity, "%f", &existing.Power)
 			}
-			DB.Save(&existing)
+			h.DB.Save(&existing)
 		} else {
 			// Create a new record
-			newUsage := DailyUsage{
+			newUsage := models.DailyUsage{
 				Block: input.Block,
 				Date:  targetDate,
 			}
@@ -204,7 +160,7 @@ func handleUpdateUsage(w http.ResponseWriter, r *http.Request) {
 			if input.Values.Electricity != "" {
 				fmt.Sscanf(input.Values.Electricity, "%f", &newUsage.Power)
 			}
-			DB.Create(&newUsage)
+			h.DB.Create(&newUsage)
 		}
 	}
 
@@ -212,8 +168,12 @@ func handleUpdateUsage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Data updated successfully")
 }
 
-func handleUpdateBlock(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) UpdateBlock(w http.ResponseWriter, r *http.Request) {
+	HostelCache.mu.Lock()
+	HostelCache.data = nil
+	HostelCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -223,12 +183,12 @@ func handleUpdateBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var input HostelBlock
+	var input models.HostelBlock
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -239,9 +199,9 @@ func handleUpdateBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var existing HostelBlock
+	var existing models.HostelBlock
 	exists := false
-	if err := DB.First(&existing, "name = ?", input.Name).Error; err == nil {
+	if err := h.DB.First(&existing, "name = ?", input.Name).Error; err == nil {
 		exists = true
 	}
 
@@ -282,7 +242,7 @@ func handleUpdateBlock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Filter out empty rows (similar to the frontend) before checking length
-	var cleanedResidents []StudentDetail
+	var cleanedResidents []models.StudentDetail
 	for _, res := range input.ResidentList {
 		if res.Name != "" || res.RollNo != "" || res.RoomNo != "" {
 			cleanedResidents = append(cleanedResidents, res)
@@ -291,10 +251,16 @@ func handleUpdateBlock(w http.ResponseWriter, r *http.Request) {
 	input.ResidentList = cleanedResidents
 
 	// We dynamically calculate exact occupancy based on the actual objects provided
-	input.Occupied = len(input.ResidentList) + len(input.Wardens)
+	occupyingWardens := 0
+	for _, w := range input.Wardens {
+		if isResidentWarden(w.Role) {
+			occupyingWardens++
+		}
+	}
+	input.Occupied = len(input.ResidentList) + occupyingWardens
 	input.VacantBeds = input.Beds - input.Occupied
 
-	var cleanedWardens []Warden
+	var cleanedWardens []models.Warden
 	for _, w := range input.Wardens {
 		if w.Name != "" || w.Phone != "" {
 			cleanedWardens = append(cleanedWardens, w)
@@ -303,20 +269,20 @@ func handleUpdateBlock(w http.ResponseWriter, r *http.Request) {
 	input.Wardens = cleanedWardens
 
 	if len(input.Wardens) == 0 {
-		http.Error(w, "Validation Error: At least one Warden or Support Staff detail is required", http.StatusBadRequest)
+		http.Error(w, "Validation Error: At least one models.Warden or Support Staff detail is required", http.StatusBadRequest)
 		return
 	}
 
 	// GORM Transaction to securely update block and overwrite collections
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		// Clear old associated records so additions/removals are applied completely
-		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&Warden{}).Error; err != nil {
+		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&models.Warden{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&StudentDetail{}).Error; err != nil {
+		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&models.StudentDetail{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&HostelFloorDetail{}).Error; err != nil {
+		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&models.HostelFloorDetail{}).Error; err != nil {
 			return err
 		}
 
@@ -343,16 +309,20 @@ func handleUpdateBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var blocks []HostelBlock
-	DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	var blocks []models.HostelBlock
+	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(blocks)
 }
 
-func handleRaiseComplaint(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) RaiseComplaint(w http.ResponseWriter, r *http.Request) {
+	HostelCache.mu.Lock()
+	HostelCache.data = nil
+	HostelCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -361,12 +331,12 @@ func handleRaiseComplaint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var ticket MaintenanceTicket
+	var ticket models.MaintenanceTicket
 	if err := json.NewDecoder(r.Body).Decode(&ticket); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -387,7 +357,7 @@ func handleRaiseComplaint(w http.ResponseWriter, r *http.Request) {
 
 	// Generate ID if empty
 	if ticket.ID == "" {
-		ticket.ID = fmt.Sprintf("TKT-%d", time.Now().UnixNano()/1e6 % 100000)
+		ticket.ID = fmt.Sprintf("TKT-%d", time.Now().UnixNano()/1e6%100000)
 	}
 	if ticket.Date == "" {
 		ticket.Date = time.Now().Format("02 Jan")
@@ -401,22 +371,26 @@ func handleRaiseComplaint(w http.ResponseWriter, r *http.Request) {
 	ticket.HostelBlockName = ticket.Block
 
 	// Save to DB
-	if err := DB.Clauses(clause.OnConflict{UpdateAll: true}).Create(&ticket).Error; err != nil {
+	if err := h.DB.Clauses(clause.OnConflict{UpdateAll: true}).Create(&ticket).Error; err != nil {
 		http.Error(w, "Error saving complaint: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Fetch all blocks to return updated state
-	var blocks []HostelBlock
-	DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	var blocks []models.HostelBlock
+	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(blocks)
 }
 
-func handleUpdateComplaintStatus(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) UpdateComplaintStatus(w http.ResponseWriter, r *http.Request) {
+	HostelCache.mu.Lock()
+	HostelCache.data = nil
+	HostelCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -425,7 +399,7 @@ func handleUpdateComplaintStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
@@ -439,8 +413,8 @@ func handleUpdateComplaintStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var ticket MaintenanceTicket
-	if err := DB.First(&ticket, "id = ?", input.ID).Error; err != nil {
+	var ticket models.MaintenanceTicket
+	if err := h.DB.First(&ticket, "id = ?", input.ID).Error; err != nil {
 		http.Error(w, "Ticket not found", http.StatusNotFound)
 		return
 	}
@@ -449,19 +423,23 @@ func handleUpdateComplaintStatus(w http.ResponseWriter, r *http.Request) {
 	if input.Status == "Resolved" {
 		ticket.TAT = "Completed"
 	}
-	DB.Save(&ticket)
+	h.DB.Save(&ticket)
 
 	// Fetch all blocks to return updated state
-	var blocks []HostelBlock
-	DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	var blocks []models.HostelBlock
+	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(blocks)
 }
 
-func handleRenameBlock(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) RenameBlock(w http.ResponseWriter, r *http.Request) {
+	HostelCache.mu.Lock()
+	HostelCache.data = nil
+	HostelCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -470,7 +448,7 @@ func handleRenameBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
@@ -490,15 +468,15 @@ func handleRenameBlock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Transaction to safely update primary key and cascade references
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		// 1. Check if new name already exists
-		var existing HostelBlock
+		var existing models.HostelBlock
 		if err := tx.Where("name = ?", req.NewName).First(&existing).Error; err == nil {
 			return fmt.Errorf("a block named '%s' already exists", req.NewName)
 		}
 
 		// 2. Fetch the existing block
-		var block HostelBlock
+		var block models.HostelBlock
 		if err := tx.Where("name = ?", req.OldName).First(&block).Error; err != nil {
 			return fmt.Errorf("block '%s' not found", req.OldName)
 		}
@@ -559,14 +537,18 @@ func handleRenameBlock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch fresh data and return
-	var blocks []HostelBlock
-	DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	var blocks []models.HostelBlock
+	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(blocks)
 }
 
-func handleAddBlock(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) AddBlock(w http.ResponseWriter, r *http.Request) {
+	HostelCache.mu.Lock()
+	HostelCache.data = nil
+	HostelCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -575,45 +557,45 @@ func handleAddBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
 	var req struct {
-		Name                   string              `json:"name"`
-		Beds                   int                 `json:"beds"`
-		Occupied               int                 `json:"occupied"`
-		Type                   string              `json:"type"`
-		Gender                 string              `json:"gender"`
-		StaffCount             int                 `json:"staffCount"`
-		Remarks                string              `json:"remarks"`
-		WardenName             string              `json:"wardenName"`
-		WardenPhone            string              `json:"wardenPhone"`
-		NumFloors              int                 `json:"numFloors"`
-		TotalRooms             int                 `json:"totalRooms"`
-		FloorDetails           []HostelFloorDetail `json:"floorDetails"`
-		ChiefWardenCount       int                 `json:"chiefWardenCount"`
-		DeputyWardenCount      int                 `json:"deputyWardenCount"`
-		SeniorCaretakerCount   int                 `json:"seniorCaretakerCount"`
-		CareTakerAttenderCount int                 `json:"careTakerAttenderCount"`
-		HouseKeeperCount       int                 `json:"houseKeeperCount"`
-		BathroomCleanerCount   int                 `json:"bathroomCleanerCount"`
-		SecurityCount          int                 `json:"securityCount"`
-		VacantBeds             int                 `json:"vacantBeds"`
-		MaintenanceRoomsBeds   int                 `json:"maintenanceRoomsBeds"`
+		Name                   string                     `json:"name"`
+		Beds                   int                        `json:"beds"`
+		Occupied               int                        `json:"occupied"`
+		Type                   string                     `json:"type"`
+		Gender                 string                     `json:"gender"`
+		StaffCount             int                        `json:"staffCount"`
+		Remarks                string                     `json:"remarks"`
+		WardenName             string                     `json:"wardenName"`
+		WardenPhone            string                     `json:"wardenPhone"`
+		NumFloors              int                        `json:"numFloors"`
+		TotalRooms             int                        `json:"totalRooms"`
+		FloorDetails           []models.HostelFloorDetail `json:"floorDetails"`
+		ChiefWardenCount       int                        `json:"chiefWardenCount"`
+		DeputyWardenCount      int                        `json:"deputyWardenCount"`
+		SeniorCaretakerCount   int                        `json:"seniorCaretakerCount"`
+		CareTakerAttenderCount int                        `json:"careTakerAttenderCount"`
+		HouseKeeperCount       int                        `json:"houseKeeperCount"`
+		BathroomCleanerCount   int                        `json:"bathroomCleanerCount"`
+		SecurityCount          int                        `json:"securityCount"`
+		VacantBeds             int                        `json:"vacantBeds"`
+		MaintenanceRoomsBeds   int                        `json:"maintenanceRoomsBeds"`
 
-		AllocatedCapacity      int                 `json:"allocatedCapacity"`
-		WaterCoolersCount      int                 `json:"waterCoolersCount"`
-		BathroomsPerFloor      float64             `json:"bathroomsPerFloor"`
-		ToiletsPerFloor        float64             `json:"toiletsPerFloor"`
-		SolarHeaterCapacity    string              `json:"solarHeaterCapacity"`
-		WifiAccessPoints       int                 `json:"wifiAccessPoints"`
-		CctvCameras            int                 `json:"cctvCameras"`
-		CaretakerCount         int                 `json:"caretakerCount"`
-		CommonRoom             string              `json:"commonRoom"`
-		ReadingRoom            string              `json:"readingRoom"`
-		ParentWaitingRoom      string              `json:"parentWaitingRoom"`
+		AllocatedCapacity   int     `json:"allocatedCapacity"`
+		WaterCoolersCount   int     `json:"waterCoolersCount"`
+		BathroomsPerFloor   float64 `json:"bathroomsPerFloor"`
+		ToiletsPerFloor     float64 `json:"toiletsPerFloor"`
+		SolarHeaterCapacity string  `json:"solarHeaterCapacity"`
+		WifiAccessPoints    int     `json:"wifiAccessPoints"`
+		CctvCameras         int     `json:"cctvCameras"`
+		CaretakerCount      int     `json:"caretakerCount"`
+		CommonRoom          string  `json:"commonRoom"`
+		ReadingRoom         string  `json:"readingRoom"`
+		ParentWaitingRoom   string  `json:"parentWaitingRoom"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -634,15 +616,15 @@ func handleAddBlock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if already exists
-	var existing HostelBlock
-	if err := DB.Where("name = ?", req.Name).First(&existing).Error; err == nil {
+	var existing models.HostelBlock
+	if err := h.DB.Where("name = ?", req.Name).First(&existing).Error; err == nil {
 		http.Error(w, fmt.Sprintf("A block named '%s' already exists", req.Name), http.StatusBadRequest)
 		return
 	}
 
 	// Seed transaction
-	err := DB.Transaction(func(tx *gorm.DB) error {
-		newBlock := HostelBlock{
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
+		newBlock := models.HostelBlock{
 			Name:                   req.Name,
 			Beds:                   req.Beds,
 			Occupied:               req.Occupied,
@@ -681,11 +663,11 @@ func handleAddBlock(w http.ResponseWriter, r *http.Request) {
 
 		// Create default warden if provided
 		if req.WardenName != "" && req.WardenPhone != "" {
-			w := Warden{
+			w := models.Warden{
 				Name:            req.WardenName,
 				Phone:           req.WardenPhone,
 				HostelBlockName: req.Name,
-				Role:            "Warden",
+				Role:            "models.Warden",
 			}
 			if err := tx.Create(&w).Error; err != nil {
 				return err
@@ -694,7 +676,7 @@ func handleAddBlock(w http.ResponseWriter, r *http.Request) {
 
 		// Seed a default usage record for today
 		targetDate := time.Now().Format("02 Jan")
-		usage := DailyUsage{
+		usage := models.DailyUsage{
 			Block: req.Name,
 			Date:  targetDate,
 			Water: 0.0,
@@ -712,14 +694,18 @@ func handleAddBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var blocks []HostelBlock
-	DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	var blocks []models.HostelBlock
+	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(blocks)
 }
 
-func handleDeleteBlock(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) DeleteBlock(w http.ResponseWriter, r *http.Request) {
+	HostelCache.mu.Lock()
+	HostelCache.data = nil
+	HostelCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -728,7 +714,7 @@ func handleDeleteBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
@@ -747,7 +733,7 @@ func handleDeleteBlock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Transaction to delete block and all associated records cascadingly
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		// Delete Wardens
 		if err := tx.Exec("DELETE FROM wardens WHERE hostel_block_name = ?", req.Name).Error; err != nil {
 			return err
@@ -781,8 +767,8 @@ func handleDeleteBlock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return updated block list
-	var blocks []HostelBlock
-	DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	var blocks []models.HostelBlock
+	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(blocks)
 }

@@ -38,8 +38,6 @@ import HorticultureDetail from './HorticultureDetail';
 import UnitDataForm from './UnitDataForm';
 import TransportUnitForm from './TransportUnitForm';
 import HorticultureUnitForm from './HorticultureUnitForm';
-import ComplianceDashboard from './ComplianceDashboard';
-import TicketsDashboard, { TICKETS_DATA } from './TicketsDashboard';
 import PlumbingDetail from './PlumbingDetail';
 import PlumbingUnitForm from './PlumbingUnitForm';
 import { buildExecutivePayload, exportExecutivePdf, exportExecutiveExcel } from './exportReports';
@@ -204,46 +202,46 @@ const UNIT_FORM_FIELDS = {
     { key: 'installedGenerationCapacity', parameter: 'Installed Generation Capacity', description: 'Total kVA / kW capacity of all generators and transformers', unit: 'kVA / kW', frequency: 'One-time' },
     { key: 'dailyEnergyConsumption', parameter: 'Daily Energy Consumption', description: 'Total units consumed per day (kWh)', unit: 'kWh', frequency: 'Daily' },
     { key: 'monthlyElectricityBill', parameter: 'Monthly Electricity Bill', description: 'Amount paid to TNEB per month', unit: 'INR', frequency: 'Monthly' },
-    { key: 'powerFactor', parameter: 'Power Factor', description: 'Average power factor of the campus load', unit: 'Numeric (0-1)', frequency: 'Daily' },
+    { key: 'powerFactor', parameter: 'Power Factor', description: 'Average power factor of the campus load', unit: 'Numeric (0-1)', frequency: 'Optional' },
     { key: 'scheduledMaintenanceDates', parameter: 'Scheduled Maintenance Dates', description: 'Last and next preventive maintenance date', unit: 'DD/MM/YYYY', frequency: 'Event-based' },
     { key: 'breakdownIncidents', parameter: 'Breakdown Incidents (Last 6 months)', description: 'Number, date, duration, and cause of breakdowns', unit: 'Count + Details', frequency: 'Historical' },
-    { key: 'dgFuelConsumption', parameter: 'DG Set Fuel Consumption', description: 'Litres consumed per day during grid failure', unit: 'Litres/day', frequency: 'Daily' },
+    { key: 'dgFuelConsumption', parameter: 'DG Set Fuel Consumption', description: 'Litres consumed per day during grid failure', unit: 'Litres/day', frequency: 'Optional' },
     { key: 'peakLoadHours', parameter: 'Peak Load Hours', description: 'Hours during which max load is observed', unit: 'HH:MM - HH:MM', frequency: 'Weekly' },
   ],
   'Chiller Plant': [
     { key: 'installedChillers', parameter: 'Number of Chillers Installed', description: 'Total chillers and TR capacity available', unit: 'Count + TR', frequency: 'One-time' },
     { key: 'dailyOperatingHours', parameter: 'Daily Operating Hours', description: 'Total running hours across chillers per day', unit: 'Hours/day', frequency: 'Daily' },
-    { key: 'loadFactor', parameter: 'Average Load Factor', description: 'Average load on active chillers', unit: '%', frequency: 'Daily' },
-    { key: 'energyConsumption', parameter: 'Energy Consumption', description: 'Total electricity used by chiller plant', unit: 'kWh/day', frequency: 'Daily' },
-    { key: 'chilledWaterTemp', parameter: 'Chilled Water Temperature', description: 'Supply and return temperature reading', unit: 'deg C', frequency: 'Daily' },
+    { key: 'loadFactor', parameter: 'Average Load Factor', description: 'Average load on active chillers', unit: '%', frequency: 'Optional' },
+    { key: 'energyConsumption', parameter: 'Energy Consumption', description: 'Total electricity used by chiller plant', unit: 'kWh/day', frequency: 'Optional' },
+    { key: 'chilledWaterTemp', parameter: 'Chilled Water Temperature', description: 'Supply and return temperature reading', unit: 'deg C', frequency: 'Optional' },
     { key: 'alarmsBreakdowns', parameter: 'Breakdowns / Alarms', description: 'Event details including date and resolution', unit: 'Count + Details', frequency: 'Event-based' },
   ],
   Transport: [
     { key: 'fleetStrength', parameter: 'Total Fleet Strength', description: 'Number of buses, vans, and support vehicles', unit: 'Count', frequency: 'One-time' },
     { key: 'dailyOperationalVehicles', parameter: 'Daily Operational Vehicles', description: 'Vehicles in service each day', unit: 'Count', frequency: 'Daily' },
-    { key: 'routeTrips', parameter: 'Route-wise Trip Details', description: 'Trips completed route by route', unit: 'Count + Route', frequency: 'Daily' },
-    { key: 'fuel', parameter: 'Fuel Consumption', description: 'Fuel consumed per vehicle per day', unit: 'L/day', frequency: 'Daily' },
+    { key: 'routeTrips', parameter: 'Route-wise Trip Details', description: 'Trips completed route by route', unit: 'Count + Route', frequency: 'Optional' },
+    { key: 'fuel', parameter: 'Fuel Consumption', description: 'Fuel consumed per vehicle per day', unit: 'L/day', frequency: 'Optional' },
     { key: 'breakdowns', parameter: 'Breakdown Incidents', description: 'Date, vehicle, cause, downtime', unit: 'Count + Details', frequency: 'Event-based' },
   ],
   Hostels: [
     { key: 'occupancy', parameter: 'Occupancy Rate', description: 'Occupied beds vs total available beds', unit: '%', frequency: 'Daily' },
-    { key: 'complaints', parameter: 'Hostel Complaints', description: 'Total complaints raised by residents', unit: 'Count', frequency: 'Daily' },
-    { key: 'electricity', parameter: 'Electricity Consumption', description: 'Hostel electricity usage', unit: 'kWh', frequency: 'Daily' },
-    { key: 'water', parameter: 'Water Consumption', description: 'Hostel water usage', unit: 'KL/day', frequency: 'Daily' },
+    { key: 'complaints', parameter: 'Hostel Complaints', description: 'Total complaints raised by residents', unit: 'Count', frequency: 'Optional' },
+    { key: 'electricity', parameter: 'Electricity Consumption', description: 'Hostel electricity usage', unit: 'kWh', frequency: 'Optional' },
+    { key: 'water', parameter: 'Water Consumption', description: 'Hostel water usage', unit: 'KL/day', frequency: 'Optional' },
     { key: 'discipline', parameter: 'Disciplinary Incidents', description: 'Incident details and actions', unit: 'Count + Details', frequency: 'Event-based' },
   ],
   Mess: [
     { key: 'seating', parameter: 'Total Seating Capacity', description: 'Maximum students that can be seated', unit: 'Count', frequency: 'One-time' },
     { key: 'dailyMeals', parameter: 'Daily Meals Served (B/L/D)', description: 'Breakfast, lunch, and dinner served', unit: 'Count', frequency: 'Daily' },
-    { key: 'waste', parameter: 'Food Waste Quantity', description: 'Estimated food waste generated', unit: 'kg/meal', frequency: 'Daily' },
+    { key: 'waste', parameter: 'Food Waste Quantity', description: 'Estimated food waste generated', unit: 'kg/meal', frequency: 'Optional' },
     { key: 'feedback', parameter: 'Feedback Score', description: 'Student weekly satisfaction score', unit: 'Score (1-5)', frequency: 'Weekly' },
     { key: 'monthlyFoodCost', parameter: 'Monthly Food Cost', description: 'Raw material and cooking expenditure', unit: 'INR', frequency: 'Monthly' },
   ],
   'RO Plant': [
     { key: 'capacity', parameter: 'Total Production Capacity', description: 'Rated plant output capacity', unit: 'L/day', frequency: 'One-time' },
     { key: 'dailyOutput', parameter: 'Actual Daily Output', description: 'Water produced per day', unit: 'L/day', frequency: 'Daily' },
-    { key: 'tds', parameter: 'TDS Levels', description: 'Output water TDS after treatment', unit: 'mg/L', frequency: 'Daily' },
-    { key: 'rejection', parameter: 'Rejection Rate', description: 'Water rejected during purification', unit: '%', frequency: 'Daily' },
+    { key: 'tds', parameter: 'TDS Levels', description: 'Output water TDS after treatment', unit: 'mg/L', frequency: 'Optional' },
+    { key: 'rejection', parameter: 'Rejection Rate', description: 'Water rejected during purification', unit: '%', frequency: 'Optional' },
     { key: 'membraneService', parameter: 'Filter / Membrane Change', description: 'Last and next change date', unit: 'DD/MM/YYYY', frequency: 'Event-based' },
   ],
   'Sports/Gym': [
@@ -268,24 +266,24 @@ const UNIT_FORM_FIELDS = {
     { key: 'budget', parameter: 'Annual Maintenance Budget', description: 'Budgeted vs actual expenditure', unit: 'INR', frequency: 'Annual' },
   ],
   Plumbing: [
-    { key: 'noOfMotors', parameter: 'Number of Motors', description: 'Total active pumps and motors', unit: 'Count', frequency: 'Daily' },
+    { key: 'noOfMotors', parameter: 'Number of Motors', description: 'Total active pumps and motors', unit: 'Count', frequency: 'Optional' },
     { key: 'motorRatingHP', parameter: 'Motor Ratings', description: 'Power ratings of motors (e.g. 5 HP, 10 HP)', unit: 'HP', frequency: 'One-time' },
     { key: 'motorOperatingHours', parameter: 'Motor Operating Hours', description: 'Daily run hours for each motor', unit: 'Hours/day', frequency: 'Daily' },
-    { key: 'complaints', parameter: 'Plumbing Complaints', description: 'Total complaints received', unit: 'Count', frequency: 'Daily' },
-    { key: 'resolved', parameter: 'Resolved Complaints', description: 'Complaints closed and verified', unit: 'Count', frequency: 'Daily' },
-    { key: 'pending', parameter: 'Pending Complaints', description: 'Open items requiring action', unit: 'Count', frequency: 'Daily' },
+    { key: 'complaints', parameter: 'Plumbing Complaints', description: 'Total complaints received', unit: 'Count', frequency: 'Optional' },
+    { key: 'resolved', parameter: 'Resolved Complaints', description: 'Complaints closed and verified', unit: 'Count', frequency: 'Optional' },
+    { key: 'pending', parameter: 'Pending Complaints', description: 'Open items requiring action', unit: 'Count', frequency: 'Optional' },
     { key: 'avgResolution', parameter: 'Average Resolution Time', description: 'Closure time for plumbing complaints', unit: 'Hours', frequency: 'Weekly' },
     { key: 'majorBreakdowns', parameter: 'Major Breakdowns', description: 'Significant incidents and root cause', unit: 'Count + Details', frequency: 'Event-based' },
   ],
   STP: [
     { key: 'capacity', parameter: 'Design Capacity', description: 'Rated STP capacity', unit: 'KLD', frequency: 'One-time' },
-    { key: 'inlet', parameter: 'Daily Inlet Volume', description: 'Sewage received per day', unit: 'KLD', frequency: 'Daily' },
+    { key: 'inlet', parameter: 'Daily Inlet Volume', description: 'Sewage received per day', unit: 'KLD', frequency: 'Optional' },
     { key: 'treated', parameter: 'Treated Water Output', description: 'Treated water produced per day', unit: 'KLD', frequency: 'Daily' },
     { key: 'quality', parameter: 'Water Quality Parameters', description: 'BOD, COD, TSS before/after treatment', unit: 'mg/L', frequency: 'Weekly' },
-    { key: 'energy', parameter: 'Energy Consumption', description: 'Daily electricity used by STP', unit: 'kWh', frequency: 'Daily' },
+    { key: 'energy', parameter: 'Energy Consumption', description: 'Daily electricity used by STP', unit: 'kWh', frequency: 'Optional' },
   ],
   'TRC / NMC': [
-    { key: 'bandwidth', parameter: 'Internet Bandwidth (Total)', description: 'Subscribed and actual throughput', unit: 'Mbps', frequency: 'Daily' },
+    { key: 'bandwidth', parameter: 'Internet Bandwidth (Total)', description: 'Subscribed and actual throughput', unit: 'Mbps', frequency: 'Optional' },
     { key: 'uptime', parameter: 'Network Uptime (%)', description: 'Availability percentage', unit: '%', frequency: 'Monthly' },
     { key: 'tickets', parameter: 'Complaint / Ticket Count', description: 'Total complaints raised and resolved', unit: 'Count', frequency: 'Monthly' },
     { key: 'devices', parameter: 'No. of Connected Devices', description: 'Active devices on campus network', unit: 'Count', frequency: 'Monthly' },
@@ -387,19 +385,19 @@ function buildUnitHeadPeriodicReminders(unitName) {
 
 function getAlertsForUser(currentUser) {
   if (!currentUser) return [];
-  if (currentUser.role === 'admin') return EXECUTIVE_CRITICAL_ALERTS;
+  
+  if (currentUser.role === 'admin') {
+    let allReminders = [];
+    Object.keys(UNIT_FORM_FIELDS).forEach(unitName => {
+      allReminders = [...allReminders, ...buildUnitHeadPeriodicReminders(unitName)];
+    });
+    return [...EXECUTIVE_CRITICAL_ALERTS, ...allReminders];
+  }
 
   const baseAlerts = EXECUTIVE_CRITICAL_ALERTS.filter((a) => a.unit === currentUser.unitName);
   const reminders = buildUnitHeadPeriodicReminders(currentUser.unitName);
   
-  const openTickets = TICKETS_DATA.filter(t => t.unit === currentUser.unitName && t.status === 'Open');
-  const ticketAlerts = openTickets.map(t => ({
-    id: `ticket-${t.id}`,
-    category: 'Open Ticket',
-    unit: t.unit,
-    occurredAt: t.date,
-    detail: `${t.title} (${t.category})`,
-  }));
+  const ticketAlerts = [];
 
   // Add FC alerts for Transport unit
   let fcAlerts = [];
@@ -1513,14 +1511,8 @@ function AppRoutes({ currentUser, onLogin, onLogout }) {
           <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 10px', width: 260 }}>
             {currentUser.role === 'admin' ? (
               <>
-                <div style={{ padding: '10px 12px', margin: '4px 0', cursor: 'pointer', fontSize: '0.9rem', color: '#e2e8f0', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }} onClick={() => { navigate('/compliance'); closeSidebarOnMobile(); }} onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.background = 'transparent'; }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4db6ac', flexShrink: 0 }}></div>
-                  Compliance Dashboard
-                </div>
-                <div style={{ padding: '10px 12px', margin: '4px 0 16px 0', cursor: 'pointer', fontSize: '0.9rem', color: '#e2e8f0', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }} onClick={() => { navigate('/tickets'); closeSidebarOnMobile(); }} onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.background = 'transparent'; }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ba68c8', flexShrink: 0 }}></div>
-                  Tickets / Maintenance
-                </div>
+
+
                 
                 <div style={{ padding: '8px 8px 4px', fontSize: '0.75rem', textTransform: 'uppercase', color: '#8a99a8', fontWeight: 700, letterSpacing: '0.05em' }}>
                   All Units
@@ -1563,10 +1555,7 @@ function AppRoutes({ currentUser, onLogin, onLogout }) {
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4db6ac', flexShrink: 0 }}></div>
                   My Unit Dashboard
                 </div>
-                <div style={{ padding: '10px 12px', margin: '4px 0 16px 0', cursor: 'pointer', fontSize: '0.9rem', color: '#e2e8f0', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }} onClick={() => { navigate('/tickets'); closeSidebarOnMobile(); }} onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.background = 'transparent'; }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ba68c8', flexShrink: 0 }}></div>
-                  Tickets / Maintenance
-                </div>
+
                 {currentUser?.unitName === 'Chiller Plant' ? (
                   <>
                     {[
@@ -1620,14 +1609,8 @@ function AppRoutes({ currentUser, onLogin, onLogout }) {
               path="/unit/:unit"
               element={currentUser ? <UnitDetailWrapper currentUser={currentUser} /> : <Navigate to="/login" replace />}
             />
-            <Route
-              path="/compliance"
-              element={currentUser?.role === 'admin' ? <ComplianceDashboard /> : <Navigate to="/" replace />}
-            />
-            <Route
-              path="/tickets"
-              element={currentUser ? <TicketsDashboard currentUser={currentUser} /> : <Navigate to="/login" replace />}
-            />
+
+
           </Routes>
         </div>
       </div>

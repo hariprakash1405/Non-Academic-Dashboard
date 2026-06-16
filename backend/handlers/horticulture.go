@@ -1,72 +1,43 @@
-package main
+package handlers
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"time"
-
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"fmt"
+	"backend/models"
+	"encoding/json"
+	"net/http"
+	
+	"time"
 )
 
 // --- Models ---
 
-type HorticulturePlant struct {
-	ID             string                  `gorm:"primaryKey" json:"id"`
-	Name           string                  `json:"name"`
-	ScientificName string                  `json:"scientificName"`
-	Category       string                  `json:"category"` // "Tree", "Flowering Plant", "Medicinal Plant", "Shrub", "Lawn Plant", "Indoor Plant", etc.
-	Age            string                  `json:"age"`      // e.g. "3 Years"
-	Quantity       int                     `json:"quantity"` // Cached sum of quantities across locations
-	DatePlanted    string                  `json:"datePlanted"` // e.g. "2024-03-12"
-	Status         string                  `json:"status"`      // "Healthy", "Needs Attention", "Diseased", "Removed"
-	ImageURL       string                  `json:"imageUrl"`    // Image path or URL
-	Remarks        string                  `json:"remarks"`
-	Locations      []PlantLocationQuantity `gorm:"foreignKey:PlantID;constraint:OnDelete:CASCADE" json:"locations"`
-	Maintenance    []HorticultureMaint     `gorm:"foreignKey:PlantID;constraint:OnDelete:CASCADE" json:"maintenance"`
-}
-
-type HorticultureLocation struct {
-	Name        string `gorm:"primaryKey" json:"name"`
-	Description string `json:"description"`
-}
-
-type PlantLocationQuantity struct {
-	ID           uint   `gorm:"primaryKey" json:"id"`
-	PlantID      string `gorm:"uniqueIndex:idx_plant_loc" json:"plantId"`
-	LocationName string `gorm:"uniqueIndex:idx_plant_loc" json:"locationName"`
-	Quantity     int    `json:"quantity"`
-}
-
-type HorticultureMaint struct {
-	ID                     uint   `gorm:"primaryKey" json:"id"`
-	PlantID                string `gorm:"uniqueIndex:idx_plant_maint_loc" json:"plantId"`
-	LocationName           string `gorm:"uniqueIndex:idx_plant_maint_loc" json:"locationName"`
-	WateringSchedule       string `json:"wateringSchedule"`
-	FertilizerSchedule     string `json:"fertilizerSchedule"`
-	PruningSchedule        string `json:"pruningSchedule"`
-	PestControlSchedule    string `json:"pestControlSchedule"`
-	LastMaintenanceDate    string `json:"lastMaintenanceDate"`
-	NextMaintenanceDueDate string `json:"nextMaintenanceDueDate"`
-	AssignedStaff          string `json:"assignedStaff"`
-}
-
 // --- Handlers ---
 
-func handleGetHorticulture(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" {
+func (h *APIHandler) GetHorticulture(w http.ResponseWriter, r *http.Request) {
+	EnableCors(&w)
+	if r.Method == "OPTIONS" { return }
+
+	HorticultureCache.mu.RLock()
+	if time.Since(HorticultureCache.lastUpdate) < HorticultureCache.ttl && HorticultureCache.data != nil {
+		HorticultureCache.mu.RUnlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(HorticultureCache.data)
 		return
 	}
+	HorticultureCache.mu.RUnlock()
 
-	if DB == nil {
+
+	
+
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var plants []HorticulturePlant
-	DB.Preload("Locations").Preload("Maintenance").Find(&plants)
+	var plants []models.HorticulturePlant
+	h.DB.Preload("Locations").Preload("Maintenance").Find(&plants)
 
 	// Ensure Quantity is correctly summed up from locations
 	for i := range plants {
@@ -76,18 +47,18 @@ func handleGetHorticulture(w http.ResponseWriter, r *http.Request) {
 		}
 		if plants[i].Quantity != sum {
 			plants[i].Quantity = sum
-			DB.Model(&HorticulturePlant{}).Where("id = ?", plants[i].ID).Update("quantity", sum)
+			h.DB.Model(&models.HorticulturePlant{}).Where("id = ?", plants[i].ID).Update("quantity", sum)
 		}
 	}
 
-	var locations []HorticultureLocation
-	DB.Find(&locations)
+	var locations []models.HorticultureLocation
+	h.DB.Find(&locations)
 
-	var plantLocs []PlantLocationQuantity
-	DB.Find(&plantLocs)
+	var plantLocs []models.PlantLocationQuantity
+	h.DB.Find(&plantLocs)
 
-	var maints []HorticultureMaint
-	DB.Find(&maints)
+	var maints []models.HorticultureMaint
+	h.DB.Find(&maints)
 
 	response := map[string]interface{}{
 		"plants":      plants,
@@ -96,12 +67,32 @@ func handleGetHorticulture(w http.ResponseWriter, r *http.Request) {
 		"maintenance": maints,
 	}
 
+	
+	
+
+
+	jsonData, err := json.Marshal(response)
+	if err == nil {
+		HorticultureCache.mu.Lock()
+		HorticultureCache.data = jsonData
+		HorticultureCache.lastUpdate = time.Now()
+		HorticultureCache.mu.Unlock()
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err == nil {
+		w.Write(jsonData)
+	} else {
+		json.NewEncoder(w).Encode(response)
+	}
 }
 
-func handleAddLocation(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) AddLocation(w http.ResponseWriter, r *http.Request) {
+	HorticultureCache.mu.Lock()
+	HorticultureCache.data = nil
+	HorticultureCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -110,7 +101,7 @@ func handleAddLocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input HorticultureLocation
+	var input models.HorticultureLocation
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -121,16 +112,20 @@ func handleAddLocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := DB.Clauses(clause.OnConflict{UpdateAll: true}).Create(&input).Error; err != nil {
+	if err := h.DB.Clauses(clause.OnConflict{UpdateAll: true}).Create(&input).Error; err != nil {
 		http.Error(w, "Failed to save location: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	handleGetHorticulture(w, r)
+	h.GetHorticulture(w, r)
 }
 
-func handleDeleteLocation(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) DeleteLocation(w http.ResponseWriter, r *http.Request) {
+	HorticultureCache.mu.Lock()
+	HorticultureCache.data = nil
+	HorticultureCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -147,17 +142,17 @@ func handleDeleteLocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		// Delete plant location links
-		if err := tx.Where("location_name = ?", input.Name).Delete(&PlantLocationQuantity{}).Error; err != nil {
+		if err := tx.Where("location_name = ?", input.Name).Delete(&models.PlantLocationQuantity{}).Error; err != nil {
 			return err
 		}
 		// Delete maintenance
-		if err := tx.Where("location_name = ?", input.Name).Delete(&HorticultureMaint{}).Error; err != nil {
+		if err := tx.Where("location_name = ?", input.Name).Delete(&models.HorticultureMaint{}).Error; err != nil {
 			return err
 		}
 		// Delete location
-		if err := tx.Where("name = ?", input.Name).Delete(&HorticultureLocation{}).Error; err != nil {
+		if err := tx.Where("name = ?", input.Name).Delete(&models.HorticultureLocation{}).Error; err != nil {
 			return err
 		}
 		return nil
@@ -168,11 +163,15 @@ func handleDeleteLocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	handleGetHorticulture(w, r)
+	h.GetHorticulture(w, r)
 }
 
-func handleAddOrUpdatePlant(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) AddOrUpdatePlant(w http.ResponseWriter, r *http.Request) {
+	HorticultureCache.mu.Lock()
+	HorticultureCache.data = nil
+	HorticultureCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -181,7 +180,7 @@ func handleAddOrUpdatePlant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input HorticulturePlant
+	var input models.HorticulturePlant
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -203,14 +202,14 @@ func handleAddOrUpdatePlant(w http.ResponseWriter, r *http.Request) {
 	}
 	input.Quantity = totalQty
 
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		// Save plant info
 		if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&input).Error; err != nil {
 			return err
 		}
 
 		// Delete old location links to replace with new ones
-		if err := tx.Where("plant_id = ?", input.ID).Delete(&PlantLocationQuantity{}).Error; err != nil {
+		if err := tx.Where("plant_id = ?", input.ID).Delete(&models.PlantLocationQuantity{}).Error; err != nil {
 			return err
 		}
 
@@ -238,11 +237,15 @@ func handleAddOrUpdatePlant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	handleGetHorticulture(w, r)
+	h.GetHorticulture(w, r)
 }
 
-func handleDeletePlant(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) DeletePlant(w http.ResponseWriter, r *http.Request) {
+	HorticultureCache.mu.Lock()
+	HorticultureCache.data = nil
+	HorticultureCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -259,14 +262,14 @@ func handleDeletePlant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("plant_id = ?", input.ID).Delete(&PlantLocationQuantity{}).Error; err != nil {
+	err := h.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("plant_id = ?", input.ID).Delete(&models.PlantLocationQuantity{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("plant_id = ?", input.ID).Delete(&HorticultureMaint{}).Error; err != nil {
+		if err := tx.Where("plant_id = ?", input.ID).Delete(&models.HorticultureMaint{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("id = ?", input.ID).Delete(&HorticulturePlant{}).Error; err != nil {
+		if err := tx.Where("id = ?", input.ID).Delete(&models.HorticulturePlant{}).Error; err != nil {
 			return err
 		}
 		return nil
@@ -277,11 +280,15 @@ func handleDeletePlant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	handleGetHorticulture(w, r)
+	h.GetHorticulture(w, r)
 }
 
-func handleUpdateMaintenance(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) UpdateMaintenance(w http.ResponseWriter, r *http.Request) {
+	HorticultureCache.mu.Lock()
+	HorticultureCache.data = nil
+	HorticultureCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -290,7 +297,7 @@ func handleUpdateMaintenance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var input HorticultureMaint
+	var input models.HorticultureMaint
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -301,19 +308,19 @@ func handleUpdateMaintenance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := DB.Clauses(clause.OnConflict{UpdateAll: true}).Create(&input).Error; err != nil {
+	if err := h.DB.Clauses(clause.OnConflict{UpdateAll: true}).Create(&input).Error; err != nil {
 		http.Error(w, "Failed to save maintenance info: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	handleGetHorticulture(w, r)
+	h.GetHorticulture(w, r)
 }
 
-func seedHorticulture() {
+func (h *APIHandler) Horticulture() {
 	var count int64
-	DB.Model(&HorticultureLocation{}).Count(&count)
+	h.DB.Model(&models.HorticultureLocation{}).Count(&count)
 	if count == 0 {
-		locations := []HorticultureLocation{
+		locations := []models.HorticultureLocation{
 			{Name: "Main Entrance", Description: "Primary gateway and front garden landscaping"},
 			{Name: "Academic Blocks", Description: "Courtyards and indoor corridors of teaching buildings"},
 			{Name: "Hostel Areas", Description: "Surrounding residential quarters and lawns"},
@@ -324,13 +331,13 @@ func seedHorticulture() {
 			{Name: "Administrative Block", Description: "Main admin building frontage and lobby"},
 			{Name: "Staff Quarters", Description: "Residential gardens for university employees"},
 		}
-		DB.Create(&locations)
+		h.DB.Create(&locations)
 	}
 
-	DB.Model(&HorticulturePlant{}).Count(&count)
+	h.DB.Model(&models.HorticulturePlant{}).Count(&count)
 	if count == 0 {
 		// Seed Plants
-		plants := []HorticulturePlant{
+		plants := []models.HorticulturePlant{
 			{
 				ID:             "HRT-10001",
 				Name:           "Mango Tree",
@@ -428,10 +435,10 @@ func seedHorticulture() {
 				Remarks:        "Potted hanging baskets. Good for air purification.",
 			},
 		}
-		DB.Create(&plants)
+		h.DB.Create(&plants)
 
 		// Seed Plant Locations
-		locQuantities := []PlantLocationQuantity{
+		locQuantities := []models.PlantLocationQuantity{
 			{PlantID: "HRT-10001", LocationName: "Main Entrance", Quantity: 15},
 			{PlantID: "HRT-10001", LocationName: "Administrative Block", Quantity: 8},
 			{PlantID: "HRT-10001", LocationName: "Hostel Areas", Quantity: 12},
@@ -460,10 +467,10 @@ func seedHorticulture() {
 			{PlantID: "HRT-10008", LocationName: "Academic Blocks", Quantity: 20},
 			{PlantID: "HRT-10008", LocationName: "Administrative Block", Quantity: 15},
 		}
-		DB.Create(&locQuantities)
+		h.DB.Create(&locQuantities)
 
 		// Seed Maintenance schedules
-		maints := []HorticultureMaint{
+		maints := []models.HorticultureMaint{
 			{
 				PlantID:                "HRT-10001",
 				LocationName:           "Main Entrance",
@@ -509,6 +516,6 @@ func seedHorticulture() {
 				AssignedStaff:          "Selvam M.",
 			},
 		}
-		DB.Create(&maints)
+		h.DB.Create(&maints)
 	}
 }

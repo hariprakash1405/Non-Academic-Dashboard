@@ -1,73 +1,23 @@
-package main
+package handlers
 
 import (
+	"backend/models"
 	"encoding/json"
 	"net/http"
+	
+	"time"
 )
 
 // --- Chiller Operating Log (BIT Chiller Units Table) ---
 // Stores per-slot operating hours for 3 chiller units + 4 pumps
 // Time slots: slot1=6AM-10AM, slot2=10AM-6PM, slot3=6PM-10PM, slot4=10PM-6AM
 
-type ChillerOperatingLog struct {
-	ID   uint   `gorm:"primaryKey" json:"id"`
-	Date string `gorm:"uniqueIndex" json:"date"`
+func (h *APIHandler) AddChillerOperatingLog(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
 
-	// DAIKIN Unit-I (185 KW) - Operating Hours per slot
-	Unit1Slot1 float64 `json:"unit1Slot1"` // 6AM-10AM
-	Unit1Slot2 float64 `json:"unit1Slot2"` // 10AM-6PM
-	Unit1Slot3 float64 `json:"unit1Slot3"` // 6PM-10PM
-	Unit1Slot4 float64 `json:"unit1Slot4"` // 10PM-6AM
-
-	// DAIKIN Unit-II (185 KW) - Operating Hours per slot
-	Unit2Slot1 float64 `json:"unit2Slot1"`
-	Unit2Slot2 float64 `json:"unit2Slot2"`
-	Unit2Slot3 float64 `json:"unit2Slot3"`
-	Unit2Slot4 float64 `json:"unit2Slot4"`
-
-	// DUNHAM-BUSH Unit-III (240 KW) - Operating Hours per slot
-	Unit3Slot1 float64 `json:"unit3Slot1"`
-	Unit3Slot2 float64 `json:"unit3Slot2"`
-	Unit3Slot3 float64 `json:"unit3Slot3"`
-	Unit3Slot4 float64 `json:"unit3Slot4"`
-
-	// Chiller Peak/Non-Peak/Night Hour Totals
-	ChillerPeakHours    float64 `json:"chillerPeakHours"`
-	ChillerNonPeakHours float64 `json:"chillerNonPeakHours"`
-	ChillerNightHours   float64 `json:"chillerNightHours"`
-
-	// Pump Unit-I (18.65 kW) - Operating Hours per slot
-	Pump1Slot1 float64 `json:"pump1Slot1"`
-	Pump1Slot2 float64 `json:"pump1Slot2"`
-	Pump1Slot3 float64 `json:"pump1Slot3"`
-	Pump1Slot4 float64 `json:"pump1Slot4"`
-
-	// Pump Unit-II (18.65 kW) - Operating Hours per slot
-	Pump2Slot1 float64 `json:"pump2Slot1"`
-	Pump2Slot2 float64 `json:"pump2Slot2"`
-	Pump2Slot3 float64 `json:"pump2Slot3"`
-	Pump2Slot4 float64 `json:"pump2Slot4"`
-
-	// Pump Unit-III (18.5 kW) - Operating Hours per slot
-	Pump3Slot1 float64 `json:"pump3Slot1"`
-	Pump3Slot2 float64 `json:"pump3Slot2"`
-	Pump3Slot3 float64 `json:"pump3Slot3"`
-	Pump3Slot4 float64 `json:"pump3Slot4"`
-
-	// Pump Unit-IV (18.65 kW) - Operating Hours per slot
-	Pump4Slot1 float64 `json:"pump4Slot1"`
-	Pump4Slot2 float64 `json:"pump4Slot2"`
-	Pump4Slot3 float64 `json:"pump4Slot3"`
-	Pump4Slot4 float64 `json:"pump4Slot4"`
-
-	// Pump Peak/Non-Peak/Night Hour Totals
-	PumpPeakHours    float64 `json:"pumpPeakHours"`
-	PumpNonPeakHours float64 `json:"pumpNonPeakHours"`
-	PumpNightHours   float64 `json:"pumpNightHours"`
-}
-
-func handleAddChillerOperatingLog(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -75,21 +25,21 @@ func handleAddChillerOperatingLog(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
 	var payload struct {
-		Date string `json:"date"`
-		ChillerWaterIn float64 `json:"chillerWaterIn"`
-		ChillerWaterOut float64 `json:"chillerWaterOut"`
-		CondenserWaterIn float64 `json:"condenserWaterIn"`
+		Date              string  `json:"date"`
+		ChillerWaterIn    float64 `json:"chillerWaterIn"`
+		ChillerWaterOut   float64 `json:"chillerWaterOut"`
+		CondenserWaterIn  float64 `json:"condenserWaterIn"`
 		CondenserWaterOut float64 `json:"condenserWaterOut"`
-		RatePeak float64 `json:"ratePeak"`
-		RateOffPeak float64 `json:"rateOffPeak"`
-		RateNight float64 `json:"rateNight"`
-		
+		RatePeak          float64 `json:"ratePeak"`
+		RateOffPeak       float64 `json:"rateOffPeak"`
+		RateNight         float64 `json:"rateNight"`
+
 		Unit1Slot1 float64 `json:"unit1Slot1"`
 		Unit1Slot2 float64 `json:"unit1Slot2"`
 		Unit1Slot3 float64 `json:"unit1Slot3"`
@@ -102,7 +52,7 @@ func handleAddChillerOperatingLog(w http.ResponseWriter, r *http.Request) {
 		Unit3Slot2 float64 `json:"unit3Slot2"`
 		Unit3Slot3 float64 `json:"unit3Slot3"`
 		Unit3Slot4 float64 `json:"unit3Slot4"`
-		
+
 		Pump1Slot1 float64 `json:"pump1Slot1"`
 		Pump1Slot2 float64 `json:"pump1Slot2"`
 		Pump1Slot3 float64 `json:"pump1Slot3"`
@@ -116,14 +66,14 @@ func handleAddChillerOperatingLog(w http.ResponseWriter, r *http.Request) {
 		Pump3Slot3 float64 `json:pump3Slot3"`
 		Pump3Slot4 float64 `json:"pump3Slot4"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// 1. Create/Update ChillerOperatingLog
-	var opLog ChillerOperatingLog
+	// 1. Create/Update models.ChillerOperatingLog
+	var opLog models.ChillerOperatingLog
 	opLog.Date = payload.Date
 	opLog.Unit1Slot1 = payload.Unit1Slot1
 	opLog.Unit1Slot2 = payload.Unit1Slot2
@@ -158,25 +108,25 @@ func handleAddChillerOperatingLog(w http.ResponseWriter, r *http.Request) {
 	opLog.PumpNonPeakHours = (opLog.Pump1Slot2 + opLog.Pump1Slot3) + (opLog.Pump2Slot2 + opLog.Pump2Slot3) + (opLog.Pump3Slot2 + opLog.Pump3Slot3)
 	opLog.PumpNightHours = opLog.Pump1Slot4 + opLog.Pump2Slot4 + opLog.Pump3Slot4
 
-	var existingOp []ChillerOperatingLog
-	DB.Where("date = ?", opLog.Date).Limit(1).Find(&existingOp)
+	var existingOp []models.ChillerOperatingLog
+	h.DB.Where("date = ?", opLog.Date).Limit(1).Find(&existingOp)
 	if len(existingOp) > 0 {
 		opLog.ID = existingOp[0].ID
-		DB.Save(&opLog)
+		h.DB.Save(&opLog)
 	} else {
-		DB.Create(&opLog)
+		h.DB.Create(&opLog)
 	}
 
-	// 2. Create/Update ChillerLog (For charts)
+	// 2. Create/Update models.ChillerLog (For charts)
 	totalChillerHrs := opLog.ChillerPeakHours + opLog.ChillerNonPeakHours + opLog.ChillerNightHours
 	totalPumpHrs := opLog.PumpPeakHours + opLog.PumpNonPeakHours + opLog.PumpNightHours
 	// Estimated power: Chiller=185kW, Pump=18.65kW
 	energyConsumed := (totalChillerHrs * 185) + (totalPumpHrs * 18.65)
-	
-	// Rough cooling load calculation (placeholder)
-	coolingLoad := totalChillerHrs * 400 
 
-	var cLog ChillerLog
+	// Rough cooling load calculation (placeholder)
+	coolingLoad := totalChillerHrs * 400
+
+	var cLog models.ChillerLog
 	cLog.Date = payload.Date
 	cLog.ChilledIn = payload.ChillerWaterIn
 	cLog.ChilledOut = payload.ChillerWaterOut
@@ -196,223 +146,102 @@ func handleAddChillerOperatingLog(w http.ResponseWriter, r *http.Request) {
 		cLog.COP = (coolingLoad * 3.51685) / energyConsumed
 	}
 
-	var existingLog []ChillerLog
-	DB.Where("date = ?", cLog.Date).Limit(1).Find(&existingLog)
+	var existingLog []models.ChillerLog
+	h.DB.Where("date = ?", cLog.Date).Limit(1).Find(&existingLog)
 	if len(existingLog) > 0 {
 		cLog.ID = existingLog[0].ID
-		DB.Save(&cLog)
+		h.DB.Save(&cLog)
 	} else {
-		DB.Create(&cLog)
+		h.DB.Create(&cLog)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(opLog)
 }
 
-func handleGetChillerOperatingLogs(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) GetChillerOperatingLogs(w http.ResponseWriter, r *http.Request) {
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var logs []ChillerOperatingLog
-	DB.Order("date desc").Limit(30).Find(&logs)
+	var logs []models.ChillerOperatingLog
+	h.DB.Order("date desc").Limit(30).Find(&logs)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(logs)
 }
 
-func handleGetBreakdowns(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	var b []ChillerBreakdown
-	DB.Order("date desc").Find(&b)
+func (h *APIHandler) GetBreakdowns(w http.ResponseWriter, r *http.Request) {
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	var b []models.ChillerBreakdown
+	h.DB.Order("date desc").Find(&b)
 	json.NewEncoder(w).Encode(b)
 }
 
-func handleAddBreakdowns(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	var input []ChillerBreakdown
+func (h *APIHandler) AddBreakdowns(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	var input []models.ChillerBreakdown
 	json.NewDecoder(r.Body).Decode(&input)
 	for _, unit := range input {
-		DB.Create(&unit)
+		h.DB.Create(&unit)
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleUpdateBreakdown(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	var input ChillerBreakdown
+func (h *APIHandler) UpdateBreakdown(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	var input models.ChillerBreakdown
 	json.NewDecoder(r.Body).Decode(&input)
-	DB.Save(&input)
+	h.DB.Save(&input)
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleDeleteBreakdown(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
+func (h *APIHandler) DeleteBreakdown(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
 	id := r.URL.Query().Get("id")
-	DB.Delete(&ChillerBreakdown{}, id)
+	h.DB.Delete(&models.ChillerBreakdown{}, id)
 	w.WriteHeader(http.StatusOK)
 }
 
 // --- Models ---
 
-type ChillerLog struct {
-	ID               uint    `gorm:"primaryKey" json:"id"`
-	Date             string  `gorm:"uniqueIndex" json:"date"`
-	ChilledIn        float64 `json:"chilledIn"`
-	ChilledOut       float64 `json:"chilledOut"`
-	CondenserIn      float64 `json:"condenserIn"`
-	CondenserOut     float64 `json:"condenserOut"`
-	DaysOperated     int     `json:"daysOperated"`
-	RunHours         float64 `json:"runHours"`
-	CoolingLoad      float64 `json:"coolingLoad"`
-	EnergyConsumed   float64 `json:"energyConsumed"`
-	RefrigerantLevel float64 `json:"refrigerantLevel"`
-	ConsLoad         float64 `json:"consLoad"`
-	ConsHr           float64 `json:"consHr"`
-	COP              float64 `json:"cop"`
-}
-
-type AhuUnit struct {
-	ID       uint    `gorm:"primaryKey" json:"id"`
-	SNo      int     `json:"sNo,omitempty"`
-	Block    string  `json:"block,omitempty"`
-	Floor    string  `json:"floor,omitempty"`
-	Loc      string  `json:"loc,omitempty"`
-	Type     string  `json:"type,omitempty"`
-	Cap      float64 `json:"cap,omitempty"`
-	Qty      int     `json:"qty,omitempty"`
-	TotCap   float64 `json:"totCap,omitempty"`
-	Hp       float64 `json:"hp,omitempty"`
-	TotHp    float64 `json:"totHp,omitempty"`
-	Area     float64 `json:"area,omitempty"`
-	SubTotal string  `json:"subTotal,omitempty"`
-}
-
-type SplitAcUnit struct {
-	ID     uint    `gorm:"primaryKey" json:"id"`
-	SNo    int     `json:"sno,omitempty"`
-	Make   string  `json:"make,omitempty"`
-	Ton    float64 `json:"ton,omitempty"`
-	Model  string  `json:"model,omitempty"`
-	Block  string  `json:"block,omitempty"`
-	Dept   string  `json:"dept,omitempty"`
-	Qty    int     `json:"qty,omitempty"`
-	TotTon float64 `json:"totTon,omitempty"`
-	Loc    string  `json:"loc,omitempty"`
-}
-
-type VrvUnit struct {
-	ID     uint    `gorm:"primaryKey" json:"id"`
-	SNo    int     `json:"sno,omitempty"`
-	Make   string  `json:"make,omitempty"`
-	Ton    float64 `json:"ton,omitempty"`
-	Model  string  `json:"model,omitempty"`
-	Block  string  `json:"block,omitempty"`
-	Dept   string  `json:"dept,omitempty"`
-	Qty    int     `json:"qty,omitempty"`
-	TotTon float64 `json:"totTon,omitempty"`
-	Loc    string  `json:"loc,omitempty"`
-	Notes  string  `json:"notes,omitempty"`
-}
-
-type ChillerBreakdown struct {
-	ID         uint   `gorm:"primaryKey" json:"id"`
-	Date       string `json:"date,omitempty"`
-	Equipment  string `json:"equipment,omitempty"`
-	Issue      string `json:"issue,omitempty"`
-	Resolution string `json:"resolution,omitempty"`
-	Status     string `json:"status,omitempty"`
-}
-
-type ColdRoomUnit struct {
-	ID     uint    `gorm:"primaryKey" json:"id"`
-	SNo    int     `json:"sno,omitempty"`
-	Make   string  `json:"make,omitempty"`
-	Ton    float64 `json:"ton,omitempty"`
-	Model  string  `json:"model,omitempty"`
-	Block  string  `json:"block,omitempty"`
-	Dept   string  `json:"dept,omitempty"`
-	Qty    int     `json:"qty,omitempty"`
-	TotTon float64 `json:"totTon,omitempty"`
-	Loc    string  `json:"loc,omitempty"`
-}
-
-type ChillerEquipment struct {
-	ID          uint   `gorm:"primaryKey" json:"id"`
-	Name        string `json:"name"`
-	Model       string `json:"model"`
-	Capacity    string `json:"capacity"`
-	Type        string `json:"type"`
-	Status      string `json:"status"`
-	Load        string `json:"load"`
-	TempIn      string `json:"tempIn"`
-	TempOut     string `json:"tempOut"`
-	Refrigerant string `json:"refrigerant"`
-	LastService string `json:"lastService"`
-	NextService string `json:"nextService"`
-	Health      int    `json:"health"`
-}
-
-type ChillerStaff struct {
-	ID         uint   `gorm:"primaryKey" json:"id"`
-	Name       string `json:"name"`
-	Role       string `json:"role"`
-	Shift      string `json:"shift"`
-	Attendance string `json:"attendance"`
-	Contact    string `json:"contact"`
-	DateJoined string `json:"dateJoined"`
-}
-
-
-type ChillerPlantSpecification struct {
-	ID        uint   `gorm:"primaryKey" json:"id"`
-	Parameter string `json:"parameter"`
-	Value     string `json:"value"`
-	Unit      string `json:"unit"`
-	Remarks   string `json:"remarks"`
-}
-
-type ChillerUnitSpecification struct {
-	ID    uint   `gorm:"primaryKey" json:"id"`
-	Param string `json:"param"`
-	Unit1 string `json:"unit1"`
-	Unit2 string `json:"unit2"`
-	Unit3 string `json:"unit3"`
-}
-
-type ChillerBillingParam struct {
-	ID                    uint    `gorm:"primaryKey" json:"id"`
-	RateOffPeak           float64 `json:"rateOffPeak"`
-	RatePeak              float64 `json:"ratePeak"`
-	RateNight             float64 `json:"rateNight"`
-	DailyOperHours        float64 `json:"dailyOperHours"`
-	PeakHours             float64 `json:"peakHours"`
-	AvgCoolingLoadTr      float64 `json:"avgCoolingLoadTr"`
-	Chiller1Active        bool    `json:"chiller1Active"`
-	Chiller2Active        bool    `json:"chiller2Active"`
-	Chiller3Active        bool    `json:"chiller3Active"`
-	PumpCondensePower     float64 `json:"pumpCondensePower"`
-	PumpChilledPower      float64 `json:"pumpChilledPower"`
-	PumpCoolingTowerPower float64 `json:"pumpCoolingTowerPower"`
-}
-
-func seedChiller() {
+func (h *APIHandler) Chiller() {
 	var count int64
-	DB.Model(&ChillerEquipment{}).Count(&count)
-	
+	h.DB.Model(&models.ChillerEquipment{}).Count(&count)
+
 	// (JSON seeding logic removed as requested)
 
 	// Seed Equipment
-	equipments := []ChillerEquipment{
+	equipments := []models.ChillerEquipment{
 		{Name: "DAIKIN / McQuay Unit-I", Model: "McQuay / PFS3252DARY", Capacity: "306 TR", Type: "Water-Cooled Screw Chiller", Status: "Running", Load: "78%", TempIn: "12.2°C", TempOut: "7.1°C", Refrigerant: "R134a", LastService: "2026-01-25", NextService: "2026-07-25", Health: 98},
 		{Name: "DAIKIN / McQuay Unit-II", Model: "McQuay / PFS3252DARY", Capacity: "306 TR", Type: "Water-Cooled Screw Chiller", Status: "Standby", Load: "0%", TempIn: "-", TempOut: "-", Refrigerant: "R134a", LastService: "2026-01-25", NextService: "2026-07-25", Health: 95},
 		{Name: "DUNHAM-BUSH Unit-III", Model: "WCFX 46TR AU 5ARJ5B", Capacity: "400 TR", Type: "Water-Cooled Screw Chiller", Status: "Running", Load: "65%", TempIn: "11.8°C", TempOut: "7.0°C", Refrigerant: "R134a", LastService: "2026-01-25", NextService: "2026-07-25", Health: 96},
@@ -420,23 +249,23 @@ func seedChiller() {
 		{Name: "Condenser Pump CW-01", Model: "-", Capacity: "18.5 kW", Type: "Condenser Water Pump", Status: "Active", Load: "-", TempIn: "-", TempOut: "-", Refrigerant: "-", LastService: "2026-03-01", NextService: "2026-09-01", Health: 94},
 	}
 	if count == 0 {
-		DB.Create(&equipments)
+		h.DB.Create(&equipments)
 	}
 	// Seed Staff
-	staffs := []ChillerStaff{
+	staffs := []models.ChillerStaff{
 		{Name: "Selvakumar R", Role: "Senior A/C Mechanic", Shift: "General Shift", Attendance: "Present", Contact: "6383458394", DateJoined: "07/01/2012"},
 		{Name: "Ranganathan R", Role: "Electrician", Shift: "Morning Shift", Attendance: "Present", Contact: "N/A", DateJoined: "N/A"},
 		{Name: "Karan M", Role: "Chiller Plant Operator", Shift: "Evening Shift", Attendance: "Present", Contact: "6381198991", DateJoined: "02/04/2024"},
 		{Name: "Vignesh R", Role: "Chiller Plant Operator", Shift: "Night Shift", Attendance: "Present", Contact: "744827303", DateJoined: "13/04/2026"},
 	}
 	var staffCount int64
-	DB.Model(&ChillerStaff{}).Count(&staffCount)
+	h.DB.Model(&models.ChillerStaff{}).Count(&staffCount)
 	if staffCount == 0 {
-		DB.Create(&staffs)
+		h.DB.Create(&staffs)
 	}
 	// (Seeding dummy logs removed so the DB only uses real user data)
 	// Seed Billing Params
-	billingParam := ChillerBillingParam{
+	billingParam := models.ChillerBillingParam{
 		RateOffPeak:           10.41,
 		RatePeak:              12.58,
 		RateNight:             10.00,
@@ -451,37 +280,47 @@ func seedChiller() {
 		PumpCoolingTowerPower: 22,
 	}
 	var bpCount int64
-	DB.Model(&ChillerBillingParam{}).Count(&bpCount)
+	h.DB.Model(&models.ChillerBillingParam{}).Count(&bpCount)
 	if bpCount == 0 {
-		DB.Create(&billingParam)
+		h.DB.Create(&billingParam)
 	}
 }
 
 // --- Handlers ---
 
-func handleGetChiller(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) GetChiller(w http.ResponseWriter, r *http.Request) {
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
 
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var logs []ChillerLog
-	DB.Order("date desc").Find(&logs)
+	// 1. Check if we have valid, unexpired cache
+	ChillerCache.mu.RLock()
+	if time.Since(ChillerCache.lastUpdate) < ChillerCache.ttl && ChillerCache.data != nil {
+		ChillerCache.mu.RUnlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(ChillerCache.data)
+		return
+	}
+	ChillerCache.mu.RUnlock()
 
-	var equipments []ChillerEquipment
-	DB.Order("id asc").Find(&equipments)
+	var logs []models.ChillerLog
+	h.DB.Order("date desc").Find(&logs)
 
-	var staff []ChillerStaff
-	DB.Order("id asc").Find(&staff)
+	var equipments []models.ChillerEquipment
+	h.DB.Order("id asc").Find(&equipments)
 
-	var billingParams ChillerBillingParam
-	if err := DB.First(&billingParams).Error; err != nil {
-		billingParams = ChillerBillingParam{
+	var staff []models.ChillerStaff
+	h.DB.Order("id asc").Find(&staff)
+
+	var billingParams models.ChillerBillingParam
+	if err := h.DB.First(&billingParams).Error; err != nil {
+		billingParams = models.ChillerBillingParam{
 			RateOffPeak:           10.41,
 			RatePeak:              12.58,
 			RateNight:             10.00,
@@ -495,7 +334,7 @@ func handleGetChiller(w http.ResponseWriter, r *http.Request) {
 			PumpChilledPower:      88,
 			PumpCoolingTowerPower: 22,
 		}
-		DB.Create(&billingParams)
+		h.DB.Create(&billingParams)
 	}
 
 	response := map[string]interface{}{
@@ -505,12 +344,29 @@ func handleGetChiller(w http.ResponseWriter, r *http.Request) {
 		"billingParams": billingParams,
 	}
 
+	jsonData, err := json.Marshal(response)
+	if err == nil {
+		// Update cache
+		ChillerCache.mu.Lock()
+		ChillerCache.data = jsonData
+		ChillerCache.lastUpdate = time.Now()
+		ChillerCache.mu.Unlock()
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err == nil {
+		w.Write(jsonData)
+	} else {
+		json.NewEncoder(w).Encode(response)
+	}
 }
 
-func handleAddChillerLog(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) AddChillerLog(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -519,12 +375,12 @@ func handleAddChillerLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var input ChillerLog
+	var input models.ChillerLog
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -549,21 +405,25 @@ func handleAddChillerLog(w http.ResponseWriter, r *http.Request) {
 		input.COP = 0
 	}
 
-	var existing []ChillerLog
-	DB.Where("date = ?", input.Date).Limit(1).Find(&existing)
+	var existing []models.ChillerLog
+	h.DB.Where("date = ?", input.Date).Limit(1).Find(&existing)
 	if len(existing) > 0 {
 		input.ID = existing[0].ID
-		DB.Save(&input)
+		h.DB.Save(&input)
 	} else {
-		DB.Create(&input)
+		h.DB.Create(&input)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(input)
 }
 
-func handleUpdateChillerBilling(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) UpdateChillerBilling(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -572,149 +432,212 @@ func handleUpdateChillerBilling(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var input ChillerBillingParam
+	var input models.ChillerBillingParam
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	var existing []ChillerBillingParam
-	DB.Limit(1).Find(&existing)
+	var existing []models.ChillerBillingParam
+	h.DB.Limit(1).Find(&existing)
 	if len(existing) > 0 {
 		input.ID = existing[0].ID
-		DB.Save(&input)
+		h.DB.Save(&input)
 	} else {
-		DB.Create(&input)
+		h.DB.Create(&input)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(input)
 }
 
-
 // -- GET, POST, DELETE Handlers for Equipments --
-func handleGetChillerEquipment(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	var units []ChillerEquipment
-	DB.Find(&units)
+func (h *APIHandler) GetChillerEquipment(w http.ResponseWriter, r *http.Request) {
+	EnableCors(&w)
+	var units []models.ChillerEquipment
+	h.DB.Find(&units)
 	json.NewEncoder(w).Encode(units)
 }
-func handleAddChillerEquipment(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	var input []ChillerEquipment
+func (h *APIHandler) AddChillerEquipment(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	var input []models.ChillerEquipment
 	json.NewDecoder(r.Body).Decode(&input)
 	for _, unit := range input {
-		DB.Create(&unit)
+		h.DB.Create(&unit)
 	}
 	w.WriteHeader(http.StatusOK)
 }
-func handleDeleteChillerEquipment(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
+func (h *APIHandler) DeleteChillerEquipment(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
 	id := r.URL.Query().Get("id")
-	DB.Delete(&ChillerEquipment{}, id)
+	h.DB.Delete(&models.ChillerEquipment{}, id)
 	w.WriteHeader(http.StatusOK)
 }
 
 // -- GET, POST, DELETE Handlers for Staff --
-func handleGetChillerStaff(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	var units []ChillerStaff
-	DB.Find(&units)
+func (h *APIHandler) GetChillerStaff(w http.ResponseWriter, r *http.Request) {
+	EnableCors(&w)
+	var units []models.ChillerStaff
+	h.DB.Find(&units)
 	json.NewEncoder(w).Encode(units)
 }
-func handleAddChillerStaff(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	var input []ChillerStaff
+func (h *APIHandler) AddChillerStaff(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	var input []models.ChillerStaff
 	json.NewDecoder(r.Body).Decode(&input)
 	for _, unit := range input {
-		DB.Create(&unit)
+		h.DB.Create(&unit)
 	}
 	w.WriteHeader(http.StatusOK)
 }
-func handleDeleteChillerStaff(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
+func (h *APIHandler) DeleteChillerStaff(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
 	id := r.URL.Query().Get("id")
-	DB.Delete(&ChillerStaff{}, id)
+	h.DB.Delete(&models.ChillerStaff{}, id)
 	w.WriteHeader(http.StatusOK)
 }
 
 // -- Handlers for Plant Specifications --
-func handleGetPlantSpecs(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	var units []ChillerPlantSpecification
-	DB.Find(&units)
+func (h *APIHandler) GetPlantSpecs(w http.ResponseWriter, r *http.Request) {
+	EnableCors(&w)
+	var units []models.ChillerPlantSpecification
+	h.DB.Find(&units)
 	json.NewEncoder(w).Encode(units)
 }
-func handleAddPlantSpecs(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	var input []ChillerPlantSpecification
+func (h *APIHandler) AddPlantSpecs(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	var input []models.ChillerPlantSpecification
 	json.NewDecoder(r.Body).Decode(&input)
 	for _, unit := range input {
-		DB.Create(&unit)
+		h.DB.Create(&unit)
 	}
 	w.WriteHeader(http.StatusOK)
 }
-func handleUpdatePlantSpec(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	var input ChillerPlantSpecification
+func (h *APIHandler) UpdatePlantSpec(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	var input models.ChillerPlantSpecification
 	json.NewDecoder(r.Body).Decode(&input)
-	DB.Save(&input)
+	h.DB.Save(&input)
 	w.WriteHeader(http.StatusOK)
 }
-func handleDeletePlantSpec(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
+func (h *APIHandler) DeletePlantSpec(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
 	id := r.URL.Query().Get("id")
-	DB.Delete(&ChillerPlantSpecification{}, id)
+	h.DB.Delete(&models.ChillerPlantSpecification{}, id)
 	w.WriteHeader(http.StatusOK)
 }
 
 // -- Handlers for Unit Specifications --
-func handleGetUnitSpecs(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	var units []ChillerUnitSpecification
-	DB.Find(&units)
+func (h *APIHandler) GetUnitSpecs(w http.ResponseWriter, r *http.Request) {
+	EnableCors(&w)
+	var units []models.ChillerUnitSpecification
+	h.DB.Find(&units)
 	json.NewEncoder(w).Encode(units)
 }
-func handleAddUnitSpecs(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	var input []ChillerUnitSpecification
+func (h *APIHandler) AddUnitSpecs(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	var input []models.ChillerUnitSpecification
 	json.NewDecoder(r.Body).Decode(&input)
 	for _, unit := range input {
-		DB.Create(&unit)
+		h.DB.Create(&unit)
 	}
 	w.WriteHeader(http.StatusOK)
 }
-func handleUpdateUnitSpec(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	var input ChillerUnitSpecification
+func (h *APIHandler) UpdateUnitSpec(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	var input models.ChillerUnitSpecification
 	json.NewDecoder(r.Body).Decode(&input)
-	DB.Save(&input)
+	h.DB.Save(&input)
 	w.WriteHeader(http.StatusOK)
 }
-func handleDeleteUnitSpec(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
+func (h *APIHandler) DeleteUnitSpec(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
 	id := r.URL.Query().Get("id")
-	DB.Delete(&ChillerUnitSpecification{}, id)
+	h.DB.Delete(&models.ChillerUnitSpecification{}, id)
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleUpdateChillerEquipment(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) UpdateChillerEquipment(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -723,24 +646,28 @@ func handleUpdateChillerEquipment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var input ChillerEquipment
+	var input models.ChillerEquipment
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	DB.Save(&input)
+	h.DB.Save(&input)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(input)
 }
 
-func handleUpdateChillerStaff(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) UpdateChillerStaff(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -749,41 +676,45 @@ func handleUpdateChillerStaff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var input ChillerStaff
+	var input models.ChillerStaff
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	DB.Save(&input)
+	h.DB.Save(&input)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(input)
 }
 
-func handleGetAhuUnits(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) GetAhuUnits(w http.ResponseWriter, r *http.Request) {
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var units []AhuUnit
-	DB.Order("id asc").Find(&units)
+	var units []models.AhuUnit
+	h.DB.Order("id asc").Find(&units)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(units)
 }
 
-func handleAddAhuUnits(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) AddAhuUnits(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -791,27 +722,31 @@ func handleAddAhuUnits(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var newUnits []AhuUnit
+	var newUnits []models.AhuUnit
 	if err := json.NewDecoder(r.Body).Decode(&newUnits); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if len(newUnits) > 0 {
-		DB.Create(&newUnits)
+		h.DB.Create(&newUnits)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(newUnits)
 }
 
-func handleUpdateAhuUnit(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) UpdateAhuUnit(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -819,12 +754,12 @@ func handleUpdateAhuUnit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var input AhuUnit
+	var input models.AhuUnit
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -835,13 +770,17 @@ func handleUpdateAhuUnit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	DB.Save(&input)
+	h.DB.Save(&input)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(input)
 }
 
-func handleDeleteAhuUnit(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) DeleteAhuUnit(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -849,7 +788,7 @@ func handleDeleteAhuUnit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
@@ -860,30 +799,34 @@ func handleDeleteAhuUnit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	DB.Delete(&AhuUnit{}, idStr)
+	h.DB.Delete(&models.AhuUnit{}, idStr)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"success":true}`))
 }
 
-func handleGetSplitAc(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) GetSplitAc(w http.ResponseWriter, r *http.Request) {
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var units []SplitAcUnit
-	DB.Order("id").Find(&units)
+	var units []models.SplitAcUnit
+	h.DB.Order("id").Find(&units)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(units)
 }
 
-func handleAddSplitAc(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) AddSplitAc(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -891,27 +834,31 @@ func handleAddSplitAc(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var newUnits []SplitAcUnit
+	var newUnits []models.SplitAcUnit
 	if err := json.NewDecoder(r.Body).Decode(&newUnits); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if len(newUnits) > 0 {
-		DB.Create(&newUnits)
+		h.DB.Create(&newUnits)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(newUnits)
 }
 
-func handleUpdateSplitAc(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) UpdateSplitAc(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -919,12 +866,12 @@ func handleUpdateSplitAc(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
 
-	var input SplitAcUnit
+	var input models.SplitAcUnit
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -935,13 +882,17 @@ func handleUpdateSplitAc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	DB.Save(&input)
+	h.DB.Save(&input)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(input)
 }
 
-func handleDeleteSplitAc(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
+func (h *APIHandler) DeleteSplitAc(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
 	if r.Method == "OPTIONS" {
 		return
 	}
@@ -949,7 +900,7 @@ func handleDeleteSplitAc(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if DB == nil {
+	if h.DB == nil {
 		http.Error(w, "Database not connected", http.StatusInternalServerError)
 		return
 	}
@@ -960,96 +911,155 @@ func handleDeleteSplitAc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	DB.Delete(&SplitAcUnit{}, idStr)
+	h.DB.Delete(&models.SplitAcUnit{}, idStr)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"success":true}`))
 }
+
 // --- VRV Units API ---
-func handleGetVrv(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	var units []VrvUnit
-	DB.Order("s_no asc").Find(&units)
+func (h *APIHandler) GetVrv(w http.ResponseWriter, r *http.Request) {
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	var units []models.VrvUnit
+	h.DB.Order("s_no asc").Find(&units)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(units)
 }
 
-func handleAddVrv(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	if r.Method != "POST" { http.Error(w, "Method not allowed", http.StatusMethodNotAllowed); return }
-	var newUnits []VrvUnit
+func (h *APIHandler) AddVrv(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var newUnits []models.VrvUnit
 	if err := json.NewDecoder(r.Body).Decode(&newUnits); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	DB.Create(&newUnits)
+	h.DB.Create(&newUnits)
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleUpdateVrv(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	if r.Method != "PUT" { http.Error(w, "Method not allowed", http.StatusMethodNotAllowed); return }
-	var input VrvUnit
+func (h *APIHandler) UpdateVrv(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "PUT" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var input models.VrvUnit
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	DB.Save(&input)
+	h.DB.Save(&input)
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleDeleteVrv(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	if r.Method != "DELETE" { http.Error(w, "Method not allowed", http.StatusMethodNotAllowed); return }
+func (h *APIHandler) DeleteVrv(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "DELETE" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	idStr := r.URL.Query().Get("id")
-	DB.Delete(&VrvUnit{}, idStr)
+	h.DB.Delete(&models.VrvUnit{}, idStr)
 	w.WriteHeader(http.StatusOK)
 }
 
 // --- Cold Room Units API ---
-func handleGetColdRoom(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	var units []ColdRoomUnit
-	DB.Order("s_no asc").Find(&units)
+func (h *APIHandler) GetColdRoom(w http.ResponseWriter, r *http.Request) {
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	var units []models.ColdRoomUnit
+	h.DB.Order("s_no asc").Find(&units)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(units)
 }
 
-func handleAddColdRoom(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	if r.Method != "POST" { http.Error(w, "Method not allowed", http.StatusMethodNotAllowed); return }
-	var newUnits []ColdRoomUnit
+func (h *APIHandler) AddColdRoom(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var newUnits []models.ColdRoomUnit
 	if err := json.NewDecoder(r.Body).Decode(&newUnits); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	DB.Create(&newUnits)
+	h.DB.Create(&newUnits)
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleUpdateColdRoom(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	if r.Method != "PUT" { http.Error(w, "Method not allowed", http.StatusMethodNotAllowed); return }
-	var input ColdRoomUnit
+func (h *APIHandler) UpdateColdRoom(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "PUT" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var input models.ColdRoomUnit
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	DB.Save(&input)
+	h.DB.Save(&input)
 	w.WriteHeader(http.StatusOK)
 }
 
-func handleDeleteColdRoom(w http.ResponseWriter, r *http.Request) {
-	enableCors(&w)
-	if r.Method == "OPTIONS" { return }
-	if r.Method != "DELETE" { http.Error(w, "Method not allowed", http.StatusMethodNotAllowed); return }
+func (h *APIHandler) DeleteColdRoom(w http.ResponseWriter, r *http.Request) {
+	ChillerCache.mu.Lock()
+	ChillerCache.data = nil
+	ChillerCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		return
+	}
+	if r.Method != "DELETE" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	idStr := r.URL.Query().Get("id")
-	DB.Delete(&ColdRoomUnit{}, idStr)
+	h.DB.Delete(&models.ColdRoomUnit{}, idStr)
 	w.WriteHeader(http.StatusOK)
 }

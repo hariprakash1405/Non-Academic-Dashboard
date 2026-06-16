@@ -1,4 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import html2canvas from 'html2canvas';
 import {
   BarChart,
   Bar,
@@ -203,6 +206,9 @@ export default function MessDetail() {
 
   const [wasteLogs, setWasteLogs] = useState({});
   const [selectedBlockWaste, setSelectedBlockWaste] = useState('Boys Hostel');
+  const [analyticsMonth, setAnalyticsMonth] = useState('May 2026');
+  const [analyticsMeal, setAnalyticsMeal] = useState('All Meals');
+  const [analyticsPieDay, setAnalyticsPieDay] = useState('All Month');
 
   // --- Dynamic Menu State ---
   const [menusList, setMenusList] = useState([]);
@@ -237,18 +243,24 @@ export default function MessDetail() {
             setEquipmentList(groupedEquip);
           }
 
-          if (data.wasteLogs) {
-            const groupedLogs = { 'Boys Day Scholar': [], 'Boys Hostel': [], 'Girls': [] };
+          let groupedLogs = generateWasteLogs();
+          if (data.wasteLogs && data.wasteLogs.length > 0) {
             data.wasteLogs.forEach(l => {
+              if (!l.blockName) return;
               const d = new Date(l.date);
               const dayOfWeek = d.toLocaleDateString('en-US', {weekday: 'short'}); // 'Mon', etc.
               const dayNum = d.getDate();
               const log = { ...l, date: l.date.split('T')[0], dayNum, dayOfWeek };
               if (!groupedLogs[l.blockName]) groupedLogs[l.blockName] = [];
-              groupedLogs[l.blockName].push(log);
+              const existingIdx = groupedLogs[l.blockName].findIndex(x => x.date === log.date);
+              if (existingIdx >= 0) {
+                groupedLogs[l.blockName][existingIdx] = log;
+              } else {
+                groupedLogs[l.blockName].push(log);
+              }
             });
-            setWasteLogs(groupedLogs);
           }
+          setWasteLogs(groupedLogs);
 
           if (data.menus) {
             setMenusList(data.menus);
@@ -276,6 +288,8 @@ export default function MessDetail() {
   const [compWeekRight, setCompWeekRight] = useState('W2');
   const [compBlockLeft, setCompBlockLeft] = useState('Boys Hostel');
   const [compBlockRight, setCompBlockRight] = useState('Girls');
+  const [compWeeklyMonth, setCompWeeklyMonth] = useState('May 2026');
+  const [compFacilityMonth, setCompFacilityMonth] = useState('May 2026');
 
   // --- Month selector State ---
   const [selectedReportMonth, setSelectedReportMonth] = useState('May 2026');
@@ -295,6 +309,123 @@ export default function MessDetail() {
     updated[idx].occupied = parseInt(editOccupiedVal) || 0;
     setBlocks(updated);
     setEditingBlockIdx(null);
+  };
+
+  const handleExportPDF = async () => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    
+    doc.setFontSize(18);
+    doc.text(`Mess & Dining Full Log - ${selectedReportMonth}`, pageWidth / 2, 15, { align: 'center' });
+    
+    let currentY = 25;
+
+    const chartsElement = document.getElementById('charts-grid-capture');
+    if (chartsElement) {
+      try {
+        const canvas = await html2canvas(chartsElement, { scale: 2 });
+        const imgData = canvas.toDataURL('image/png');
+        
+        const imgWidth = pageWidth - 28;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        
+        doc.setFontSize(14);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`Visual Analytics (Current: ${selectedBlockWaste})`, 14, currentY);
+        currentY += 8;
+        
+        doc.addImage(imgData, 'PNG', 14, currentY, imgWidth, imgHeight);
+        currentY += imgHeight + 15;
+      } catch (err) {
+        console.error("Failed to capture charts:", err);
+      }
+    }
+
+    const categories = ['Boys Day Scholar', 'Boys Hostel', 'Girls'];
+
+    categories.forEach((blockName, idx) => {
+      if (idx > 0) {
+        doc.addPage();
+        currentY = 20;
+      }
+
+      doc.setFontSize(14);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`Category: ${blockName}`, 14, currentY);
+      currentY += 10;
+
+      doc.setFontSize(12);
+      doc.text('Monthly Food Waste Log', 14, currentY);
+      currentY += 5;
+
+      const blockLogs = wasteLogs[blockName] || [];
+      const occ = (blocks.find(b => b.name === blockName) || {}).occupied || 1;
+
+      const wasteBody = blockLogs.map(l => {
+        const bCount = l.breakfastCount > 0 ? l.breakfastCount : occ;
+        const lCount = l.lunchCount > 0 ? l.lunchCount : occ;
+        const dCount = l.dinnerCount > 0 ? l.dinnerCount : occ;
+        const tCount = (bCount + lCount + dCount) / 3;
+        return [
+          l.date,
+          l.dayOfWeek,
+          `${l.breakfast} KG (${Math.round((l.breakfast * 1000) / bCount)}g/head)`,
+          `${l.lunch} KG (${Math.round((l.lunch * 1000) / lCount)}g/head)`,
+          `${l.dinner} KG (${Math.round((l.dinner * 1000) / dCount)}g/head)`,
+          `${l.total} KG (${Math.round((l.total * 1000) / tCount)}g/head)`
+        ];
+      });
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Date', 'Day', 'Breakfast', 'Lunch', 'Dinner', 'Total']],
+        body: wasteBody,
+        theme: 'grid',
+        headStyles: { fillColor: [79, 70, 229] },
+        styles: { fontSize: 8 }
+      });
+      currentY = doc.lastAutoTable.finalY + 15;
+
+      doc.setFontSize(12);
+      doc.text('Monthly Food Menu', 14, currentY);
+      currentY += 5;
+
+      const [monthName, year] = selectedReportMonth.split(' ');
+      const monthMap = { 'Jan': '01', 'Feb': '02', 'Mar': '03', 'April': '04', 'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08', 'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12' };
+      const monthNum = monthMap[monthName] || monthMap[monthName.substring(0,3)];
+      const monthYearStr = monthNum && year ? `${year}-${monthNum}` : '';
+      
+      const menuRow = menusList.find(m => m.blockName === blockName && m.monthYear === monthYearStr);
+      let menuArray = [];
+      if (menuRow && menuRow.menuJSON) {
+        try { menuArray = JSON.parse(menuRow.menuJSON); } catch(e) {}
+      }
+
+      if (menuArray.length > 0) {
+        const menuBody = menuArray.map(m => [
+          m.date, m.day, m.breakfast || '-', m.lunch || '-', m.dinner || '-'
+        ]);
+
+        autoTable(doc, {
+          startY: currentY,
+          head: [['Date', 'Day', 'Breakfast Menu', 'Lunch Menu', 'Dinner Menu']],
+          body: menuBody,
+          theme: 'grid',
+          headStyles: { fillColor: [16, 185, 129] },
+          styles: { fontSize: 8 },
+          columnStyles: {
+            2: { cellWidth: 45 },
+            3: { cellWidth: 45 },
+            4: { cellWidth: 45 }
+          }
+        });
+      } else {
+        doc.setFontSize(10);
+        doc.text('No menu data found for this category/month.', 14, currentY + 5);
+      }
+    });
+
+    doc.save(`Mess_Log_${selectedReportMonth.replace(' ', '_')}.pdf`);
   };
 
   const handleDayOfWeekChange = (newDay) => {
@@ -385,26 +516,43 @@ export default function MessDetail() {
   // Recharts: Day-wise food waste chart data
   const dayWiseWasteChartData = useMemo(() => {
     const logs = wasteLogs[selectedBlockWaste] || [];
-    return logs.map(l => ({
-      day: l.dayNum,
-      date: l.date,
-      Breakfast: l.breakfast,
-      Lunch: l.lunch,
-      Dinner: l.dinner,
-      Total: l.total,
-    }));
-  }, [wasteLogs, selectedBlockWaste]);
+    const occ = (blocks.find(b => b.name === selectedBlockWaste) || {}).occupied || 1;
+    return logs.map(l => {
+      let bCount = l.breakfastCount > 0 ? l.breakfastCount : occ;
+      let lCount = l.lunchCount > 0 ? l.lunchCount : occ;
+      let dCount = l.dinnerCount > 0 ? l.dinnerCount : occ;
+      let tCount = (bCount + lCount + dCount) / 3;
+
+      let val = l.total;
+      let vCount = tCount;
+      if (analyticsMeal === 'Breakfast') { val = l.breakfast; vCount = bCount; }
+      else if (analyticsMeal === 'Lunch') { val = l.lunch; vCount = lCount; }
+      else if (analyticsMeal === 'Dinner') { val = l.dinner; vCount = dCount; }
+
+      return {
+        day: l.dayNum,
+        date: l.date,
+        Breakfast: Math.round((l.breakfast * 1000) / bCount),
+        Lunch: Math.round((l.lunch * 1000) / lCount),
+        Dinner: Math.round((l.dinner * 1000) / dCount),
+        Total: Math.round((l.total * 1000) / tCount),
+        SelectedValue: Math.round((val * 1000) / vCount),
+      };
+    });
+  }, [wasteLogs, selectedBlockWaste, blocks, analyticsMeal]);
 
   // Recharts: Week-wise comparison chart data
   const weekWiseChartData = useMemo(() => {
     const logs = wasteLogs[selectedBlockWaste] || [];
     const weeks = [
-      { name: 'Week 1 (1-7)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, count: 0 },
-      { name: 'Week 2 (8-14)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, count: 0 },
-      { name: 'Week 3 (15-21)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, count: 0 },
-      { name: 'Week 4 (22-28)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, count: 0 },
-      { name: 'Week 5 (29-31)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, count: 0 },
+      { name: 'Week 1 (1-7)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, bCountSum: 0, lCountSum: 0, dCountSum: 0, count: 0 },
+      { name: 'Week 2 (8-14)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, bCountSum: 0, lCountSum: 0, dCountSum: 0, count: 0 },
+      { name: 'Week 3 (15-21)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, bCountSum: 0, lCountSum: 0, dCountSum: 0, count: 0 },
+      { name: 'Week 4 (22-28)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, bCountSum: 0, lCountSum: 0, dCountSum: 0, count: 0 },
+      { name: 'Week 5 (29-31)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, bCountSum: 0, lCountSum: 0, dCountSum: 0, count: 0 },
     ];
+
+    const occ = (blocks.find(b => b.name === selectedBlockWaste) || {}).occupied || 1;
 
     logs.forEach(l => {
       let wIdx = 0;
@@ -418,17 +566,34 @@ export default function MessDetail() {
       weeks[wIdx].Lunch += l.lunch;
       weeks[wIdx].Dinner += l.dinner;
       weeks[wIdx].Total += l.total;
+      weeks[wIdx].bCountSum += l.breakfastCount > 0 ? l.breakfastCount : occ;
+      weeks[wIdx].lCountSum += l.lunchCount > 0 ? l.lunchCount : occ;
+      weeks[wIdx].dCountSum += l.dinnerCount > 0 ? l.dinnerCount : occ;
       weeks[wIdx].count += 1;
     });
 
-    return weeks.map(w => ({
-      name: w.name,
-      Breakfast: Math.round(w.Breakfast / (w.count || 1)),
-      Lunch: Math.round(w.Lunch / (w.count || 1)),
-      Dinner: Math.round(w.Dinner / (w.count || 1)),
-      Total: Math.round(w.Total / (w.count || 1)),
-    }));
-  }, [wasteLogs, selectedBlockWaste]);
+    return weeks.map(w => {
+      let bCountAvg = w.bCountSum / (w.count || 1);
+      let lCountAvg = w.lCountSum / (w.count || 1);
+      let dCountAvg = w.dCountSum / (w.count || 1);
+      let tCountAvg = (bCountAvg + lCountAvg + dCountAvg) / 3;
+
+      let val = w.Total;
+      let vCount = tCountAvg;
+      if (analyticsMeal === 'Breakfast') { val = w.Breakfast; vCount = bCountAvg; }
+      else if (analyticsMeal === 'Lunch') { val = w.Lunch; vCount = lCountAvg; }
+      else if (analyticsMeal === 'Dinner') { val = w.Dinner; vCount = dCountAvg; }
+      
+      return {
+        name: w.name,
+        Breakfast: Math.round(((w.Breakfast / (w.count || 1)) * 1000) / (bCountAvg || 1)),
+        Lunch: Math.round(((w.Lunch / (w.count || 1)) * 1000) / (lCountAvg || 1)),
+        Dinner: Math.round(((w.Dinner / (w.count || 1)) * 1000) / (dCountAvg || 1)),
+        Total: Math.round(((w.Total / (w.count || 1)) * 1000) / (tCountAvg || 1)),
+        SelectedValue: Math.round(((val / (w.count || 1)) * 1000) / (vCount || 1)),
+      };
+    });
+  }, [wasteLogs, selectedBlockWaste, blocks, analyticsMeal]);
 
   // Recharts: Block-wise comparison (Total Waste for May)
   const blockComparisonData = useMemo(() => {
@@ -441,21 +606,28 @@ export default function MessDetail() {
 
   // Recharts: Meal-wise total waste analysis
   const mealWiseWasteData = useMemo(() => {
-    const logs = wasteLogs[selectedBlockWaste] || [];
-    let bTotal = 0;
-    let lTotal = 0;
-    let dTotal = 0;
+    let logs = wasteLogs[selectedBlockWaste] || [];
+    if (analyticsPieDay !== 'All Month') {
+      logs = logs.filter(l => l.date === analyticsPieDay);
+    }
+    const occ = (blocks.find(b => b.name === selectedBlockWaste) || {}).occupied || 1;
+    let bTotal = 0, lTotal = 0, dTotal = 0;
+    let bCountSum = 0, lCountSum = 0, dCountSum = 0;
     logs.forEach(l => {
       bTotal += l.breakfast;
       lTotal += l.lunch;
       dTotal += l.dinner;
+      bCountSum += l.breakfastCount > 0 ? l.breakfastCount : occ;
+      lCountSum += l.lunchCount > 0 ? l.lunchCount : occ;
+      dCountSum += l.dinnerCount > 0 ? l.dinnerCount : occ;
     });
+    const days = logs.length || 1;
     return [
-      { name: 'Breakfast', value: bTotal },
-      { name: 'Lunch', value: lTotal },
-      { name: 'Dinner', value: dTotal },
+      { name: 'Breakfast', value: Math.round(((bTotal / days) * 1000) / (bCountSum / days || 1)) },
+      { name: 'Lunch', value: Math.round(((lTotal / days) * 1000) / (lCountSum / days || 1)) },
+      { name: 'Dinner', value: Math.round(((dTotal / days) * 1000) / (dCountSum / days || 1)) },
     ];
-  }, [wasteLogs, selectedBlockWaste]);
+  }, [wasteLogs, selectedBlockWaste, blocks, analyticsPieDay]);
 
   // Day of Week Comparison Calculation
   const dayOfWeekComparisonResult = useMemo(() => {
@@ -482,9 +654,15 @@ export default function MessDetail() {
     const rightRec = logs.find(l => l.date === compDayRight);
 
     if (!leftRec || !rightRec) return null;
+    
+    const diff = leftRec.total - rightRec.total;
+    const pct = rightRec.total > 0 ? Math.round((diff / rightRec.total) * 100) : 0;
+    
     return {
       left: leftRec,
       right: rightRec,
+      diff,
+      pct,
     };
   }, [wasteLogs, selectedBlockWaste, compDayLeft, compDayRight]);
 
@@ -498,8 +676,10 @@ export default function MessDetail() {
     return {
       leftName: weekData[leftIdx]?.name || 'N/A',
       leftVal: weekData[leftIdx]?.Total || 0,
+      leftDetails: weekData[leftIdx] || { Breakfast: 0, Lunch: 0, Dinner: 0 },
       rightName: weekData[rightIdx]?.name || 'N/A',
       rightVal: weekData[rightIdx]?.Total || 0,
+      rightDetails: weekData[rightIdx] || { Breakfast: 0, Lunch: 0, Dinner: 0 },
     };
   }, [weekWiseChartData, compWeekLeft, compWeekRight]);
 
@@ -507,47 +687,84 @@ export default function MessDetail() {
   const blockCompResult = useMemo(() => {
     const leftSummary = getMonthlyTotalAndAverage(wasteLogs, compBlockLeft);
     const rightSummary = getMonthlyTotalAndAverage(wasteLogs, compBlockRight);
-    const leftToday = getTodayWaste(wasteLogs, compBlockLeft);
-    const rightToday = getTodayWaste(wasteLogs, compBlockRight);
+
+    const getMealTotals = (blockName) => {
+      const logs = wasteLogs[blockName] || [];
+      let bTotal = 0;
+      let lTotal = 0;
+      let dTotal = 0;
+      logs.forEach(l => {
+        bTotal += l.breakfast;
+        lTotal += l.lunch;
+        dTotal += l.dinner;
+      });
+      const blockInfo = blocks.find(b => b.name === blockName) || { occupied: 1 };
+      const occ = blockInfo.occupied || 1;
+      const days = logs.length || 1;
+      return {
+        breakfast: bTotal,
+        lunch: lTotal,
+        dinner: dTotal,
+        bPerHead: Math.round(((bTotal / days) * 1000) / occ),
+        lPerHead: Math.round(((lTotal / days) * 1000) / occ),
+        dPerHead: Math.round(((dTotal / days) * 1000) / occ),
+        occupied: occ
+      };
+    };
 
     return {
       leftName: compBlockLeft,
       rightName: compBlockRight,
       leftTotal: leftSummary.total,
       leftAvg: leftSummary.avg,
-      leftToday: leftToday.total,
+      leftDetails: getMealTotals(compBlockLeft),
       rightTotal: rightSummary.total,
       rightAvg: rightSummary.avg,
-      rightToday: rightToday.total,
+      rightDetails: getMealTotals(compBlockRight),
     };
-  }, [wasteLogs, compBlockLeft, compBlockRight]);
+  }, [wasteLogs, compBlockLeft, compBlockRight, blocks]);
 
   // Summary Metrics: highest waste day, least waste day, weekly average
   const summaryMetrics = useMemo(() => {
     const logs = wasteLogs[selectedBlockWaste] || [];
     if (logs.length === 0) return null;
 
+    const occ = (blocks.find(b => b.name === selectedBlockWaste) || {}).occupied || 1;
+
     let maxRec = logs[0];
     let minRec = logs[0];
     let sum = 0;
 
+    const getVal = (l) => {
+      if (analyticsMeal === 'Breakfast') return l.breakfast;
+      if (analyticsMeal === 'Lunch') return l.lunch;
+      if (analyticsMeal === 'Dinner') return l.dinner;
+      return l.total;
+    };
+
     logs.forEach(l => {
-      if (l.total > maxRec.total) maxRec = l;
+      const val = getVal(l);
+      const maxVal = getVal(maxRec);
+      const minVal = getVal(minRec);
+      
+      if (val > maxVal) maxRec = l;
       // Skip day scholars zero days for min comparison (if any) or look at non-zero minimums
-      if (l.total < minRec.total) minRec = l;
-      sum += l.total;
+      if (val < minVal) minRec = l;
+      sum += val;
     });
 
-    const averageWeekly = Math.round((sum / logs.length) * 7);
+    const averageWeekly = Math.round(((sum / logs.length) * 7 * 1000) / occ);
+    const highestValG = Math.round((getVal(maxRec) * 1000) / occ);
+    const leastValG = Math.round((getVal(minRec) * 1000) / occ);
 
     return {
       highestDay: maxRec.date,
-      highestVal: maxRec.total,
+      highestVal: highestValG,
       leastDay: minRec.date,
-      leastVal: minRec.total,
+      leastVal: leastValG,
       avgWeekly: averageWeekly,
     };
-  }, [wasteLogs, selectedBlockWaste]);
+  }, [wasteLogs, selectedBlockWaste, blocks, analyticsMeal]);
 
   // Available Mondays helper for picker
   const mondaysInMay = [
@@ -913,40 +1130,71 @@ export default function MessDetail() {
       {/* ---------------------------------------------------------------------------------- */}
       {/* TAB 3: FOOD WASTE ANALYTICS */}
       {/* ---------------------------------------------------------------------------------- */}
-      {activeTab === 'waste' && (
-        <div style={{ animation: 'fadeIn 0.3s ease' }}>
+      <div style={
+        activeTab === 'waste' 
+          ? { animation: 'fadeIn 0.3s ease' } 
+          : { position: 'absolute', left: '-9999px', top: 0, width: '1000px', visibility: 'hidden' }
+      }>
 
           {/* Block Selection Toggle */}
           <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px 20px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-            <label style={{ fontSize: '0.9rem', fontWeight: 700 }}>
-              Analyze Waste for Block:
-              <select
-                value={selectedBlockWaste}
-                onChange={e => setSelectedBlockWaste(e.target.value)}
-                style={{ marginLeft: '10px', padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600 }}
-              >
-                <option value="Boys Day Scholar">Boys Day Scholar</option>
-                <option value="Boys Hostel">Boys Hostel</option>
-                <option value="Girls">Girls</option>
-              </select>
-            </label>
+            <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+              <label style={{ fontSize: '0.9rem', fontWeight: 700 }}>
+                Analyze Waste for Block:
+                <select
+                  value={selectedBlockWaste}
+                  onChange={e => setSelectedBlockWaste(e.target.value)}
+                  style={{ marginLeft: '10px', padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+                >
+                  <option value="Boys Day Scholar">Boys Day Scholar</option>
+                  <option value="Boys Hostel">Boys Hostel</option>
+                  <option value="Girls">Girls</option>
+                </select>
+              </label>
+
+              <label style={{ fontSize: '0.9rem', fontWeight: 700 }}>
+                Month:
+                <select
+                  value={analyticsMonth}
+                  onChange={e => setAnalyticsMonth(e.target.value)}
+                  style={{ marginLeft: '10px', padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+                >
+                  <option value="May 2026">May 2026</option>
+                  <option value="April 2026">April 2026 (Archived)</option>
+                </select>
+              </label>
+
+              <label style={{ fontSize: '0.9rem', fontWeight: 700 }}>
+                Meal:
+                <select
+                  value={analyticsMeal}
+                  onChange={e => setAnalyticsMeal(e.target.value)}
+                  style={{ marginLeft: '10px', padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+                >
+                  <option value="All Meals">All Meals</option>
+                  <option value="Breakfast">Breakfast</option>
+                  <option value="Lunch">Lunch</option>
+                  <option value="Dinner">Dinner</option>
+                </select>
+              </label>
+            </div>
 
             {/* Quick Metrics Bar */}
             {summaryMetrics && (
               <div style={{ display: 'flex', gap: '20px', fontSize: '0.85rem' }}>
-                <div>Avg Weekly: <strong>{summaryMetrics.avgWeekly} KG</strong></div>
-                <div style={{ color: '#b91c1c' }}>Peak: <strong>{summaryMetrics.highestVal} KG</strong> ({summaryMetrics.highestDay})</div>
-                <div style={{ color: '#166534' }}>Low: <strong>{summaryMetrics.leastVal} KG</strong> ({summaryMetrics.leastDay})</div>
+                <div>Avg Weekly: <strong>{summaryMetrics.avgWeekly} g/head</strong></div>
+                <div style={{ color: '#b91c1c' }}>Peak: <strong>{summaryMetrics.highestVal} g/head</strong> ({summaryMetrics.highestDay})</div>
+                <div style={{ color: '#166534' }}>Low: <strong>{summaryMetrics.leastVal} g/head</strong> ({summaryMetrics.leastDay})</div>
               </div>
             )}
           </div>
 
           {/* Charts Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+          <div id="charts-grid-capture" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px', padding: '10px', background: '#f8fafc' }}>
             
             {/* Chart 1: Day-wise waste */}
             <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-              <h4 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 800 }}>📈 Day-wise Food Waste (KG) - May 2026</h4>
+              <h4 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 800 }}>📈 Day-wise Food Waste (g/head) - {analyticsMonth}</h4>
               <div style={{ height: '260px' }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={dayWiseWasteChartData}>
@@ -960,7 +1208,7 @@ export default function MessDetail() {
                     <XAxis dataKey="day" />
                     <YAxis />
                     <Tooltip labelFormatter={(v) => `May ${v}`} />
-                    <Area type="monotone" dataKey="Total" stroke="#4f46e5" strokeWidth={2.5} fillOpacity={1} fill="url(#colorWaste)" />
+                    <Area type="monotone" dataKey="SelectedValue" stroke="#4f46e5" strokeWidth={2.5} fillOpacity={1} fill="url(#colorWaste)" name={`${analyticsMeal} (g/head)`} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -968,7 +1216,7 @@ export default function MessDetail() {
 
             {/* Chart 2: Week-wise comparison */}
             <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-              <h4 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 800 }}>📊 Weekly Average Waste Comparison (KG)</h4>
+              <h4 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 800 }}>📊 Weekly Average Waste Comparison (g/head)</h4>
               <div style={{ height: '260px' }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={weekWiseChartData}>
@@ -977,7 +1225,7 @@ export default function MessDetail() {
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="Total" fill="#10b981" name="Average Waste (KG)" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="SelectedValue" fill="#10b981" name={`${analyticsMeal === 'All Meals' ? 'Average Waste' : analyticsMeal} (g/head)`} radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -985,7 +1233,19 @@ export default function MessDetail() {
 
             {/* Chart 3: Meal-wise waste analysis */}
             <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-              <h4 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 800 }}>🥯 Meal-wise Waste Analysis (Total KG)</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>🥯 Meal-wise Waste Analysis ({analyticsPieDay === 'All Month' ? 'Average' : 'Total'} g/head)</h4>
+                <select
+                  value={analyticsPieDay}
+                  onChange={e => setAnalyticsPieDay(e.target.value)}
+                  style={{ padding: '4px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600, fontSize: '0.8rem' }}
+                >
+                  <option value="All Month">All Month (Average)</option>
+                  {[...Array(31)].map((_, i) => (
+                    <option key={i+1} value={`2026-05-${String(i+1).padStart(2, '0')}`}>May {i+1}</option>
+                  ))}
+                </select>
+              </div>
               <div style={{ height: '260px' }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -994,7 +1254,7 @@ export default function MessDetail() {
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value) => `${value} KG`} />
+                    <Tooltip formatter={(value) => `${value} g/head`} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -1002,7 +1262,7 @@ export default function MessDetail() {
 
             {/* Chart 4: Meal Stacked daily breakdown */}
             <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-              <h4 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 800 }}>🥞 Stacked Meal Waste Breakdown</h4>
+              <h4 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 800 }}>🥞 Stacked Meal Waste Breakdown (g/head)</h4>
               <div style={{ height: '260px' }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={dayWiseWasteChartData}>
@@ -1018,12 +1278,9 @@ export default function MessDetail() {
                 </ResponsiveContainer>
               </div>
             </div>
-
           </div>
 
-        </div>
-      )}
-
+      </div>
       {/* ---------------------------------------------------------------------------------- */}
       {/* TAB 4: DETAILED COMPARISONS PANEL */}
       {/* ---------------------------------------------------------------------------------- */}
@@ -1104,23 +1361,42 @@ export default function MessDetail() {
 
               {dayOfWeekComparisonResult && (
                 <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                    <div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Date {dayOfWeekComparisonResult.left.date} total</div>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>{dayOfWeekComparisonResult.left.total} KG</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Date {dayOfWeekComparisonResult.right.date} total</div>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>{dayOfWeekComparisonResult.right.total} KG</div>
-                    </div>
-                  </div>
+                  {(() => {
+                    const occ = (blocks.find(b => b.name === selectedBlockWaste) || {}).occupied || 1;
+                    const left = dayOfWeekComparisonResult.left;
+                    const right = dayOfWeekComparisonResult.right;
+                    return (
+                      <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                          <div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Date {left.date}</div>
+                            <div style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
+                              <div>Breakfast: {left.breakfast} KG <strong>({Math.round((left.breakfast * 1000) / occ)}g/head)</strong></div>
+                              <div>Lunch: {left.lunch} KG <strong>({Math.round((left.lunch * 1000) / occ)}g/head)</strong></div>
+                              <div>Dinner: {left.dinner} KG <strong>({Math.round((left.dinner * 1000) / occ)}g/head)</strong></div>
+                              <div style={{ fontSize: '1.05rem', fontWeight: 800, marginTop: '4px', color: '#4f46e5' }}>Total: {left.total} KG</div>
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right', borderLeft: '1px dashed #cbd5e1', paddingLeft: '16px' }}>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Date {right.date}</div>
+                            <div style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px', alignItems: 'flex-end' }}>
+                              <div>Breakfast: {right.breakfast} KG <strong>({Math.round((right.breakfast * 1000) / occ)}g/head)</strong></div>
+                              <div>Lunch: {right.lunch} KG <strong>({Math.round((right.lunch * 1000) / occ)}g/head)</strong></div>
+                              <div>Dinner: {right.dinner} KG <strong>({Math.round((right.dinner * 1000) / occ)}g/head)</strong></div>
+                              <div style={{ fontSize: '1.05rem', fontWeight: 800, marginTop: '4px', color: '#10b981' }}>Total: {right.total} KG</div>
+                            </div>
+                          </div>
+                        </div>
 
-                  <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Variance:</span>
-                    <span style={{ fontWeight: 800, color: dayOfWeekComparisonResult.diff > 0 ? '#ef4444' : '#10b981' }}>
-                      {dayOfWeekComparisonResult.diff > 0 ? `+${dayOfWeekComparisonResult.diff}` : dayOfWeekComparisonResult.diff} KG ({dayOfWeekComparisonResult.pct > 0 ? `+${dayOfWeekComparisonResult.pct}` : dayOfWeekComparisonResult.pct}%)
-                    </span>
-                  </div>
+                        <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Variance:</span>
+                          <span style={{ fontWeight: 800, color: dayOfWeekComparisonResult.diff > 0 ? '#ef4444' : '#10b981' }}>
+                            {dayOfWeekComparisonResult.diff > 0 ? `+${dayOfWeekComparisonResult.diff}` : dayOfWeekComparisonResult.diff} KG ({dayOfWeekComparisonResult.pct > 0 ? `+${dayOfWeekComparisonResult.pct}` : dayOfWeekComparisonResult.pct}%)
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -1156,33 +1432,61 @@ export default function MessDetail() {
               </div>
 
               {customDayComparisonResult && (
-                <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <h5 style={{ margin: '0 0 8px 0', color: '#4f46e5' }}>May {customDayComparisonResult.left.dayNum} ({customDayComparisonResult.left.dayOfWeek})</h5>
-                    <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div>Breakfast: <strong>{customDayComparisonResult.left.breakfast} KG</strong></div>
-                      <div>Lunch: <strong>{customDayComparisonResult.left.lunch} KG</strong></div>
-                      <div>Dinner: <strong>{customDayComparisonResult.left.dinner} KG</strong></div>
-                      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '4px', marginTop: '4px' }}>Total: <strong>{customDayComparisonResult.left.total} KG</strong></div>
-                    </div>
-                  </div>
-                  <div style={{ borderLeft: '1px dashed #cbd5e1', paddingLeft: '12px' }}>
-                    <h5 style={{ margin: '0 0 8px 0', color: '#10b981' }}>May {customDayComparisonResult.right.dayNum} ({customDayComparisonResult.right.dayOfWeek})</h5>
-                    <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div>Breakfast: <strong>{customDayComparisonResult.right.breakfast} KG</strong></div>
-                      <div>Lunch: <strong>{customDayComparisonResult.right.lunch} KG</strong></div>
-                      <div>Dinner: <strong>{customDayComparisonResult.right.dinner} KG</strong></div>
-                      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '4px', marginTop: '4px' }}>Total: <strong>{customDayComparisonResult.right.total} KG</strong></div>
-                    </div>
-                  </div>
+                <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  {(() => {
+                    const occ = (blocks.find(b => b.name === selectedBlockWaste) || {}).occupied || 1;
+                    const left = customDayComparisonResult.left;
+                    const right = customDayComparisonResult.right;
+                    return (
+                      <>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                          <div>
+                            <h5 style={{ margin: '0 0 8px 0', color: '#4f46e5' }}>May {left.dayNum} ({left.dayOfWeek})</h5>
+                            <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <div>Breakfast: {left.breakfast} KG <strong>({Math.round((left.breakfast * 1000) / occ)}g/head)</strong></div>
+                              <div>Lunch: {left.lunch} KG <strong>({Math.round((left.lunch * 1000) / occ)}g/head)</strong></div>
+                              <div>Dinner: {left.dinner} KG <strong>({Math.round((left.dinner * 1000) / occ)}g/head)</strong></div>
+                              <div style={{ fontSize: '1.05rem', fontWeight: 800, borderTop: '1px solid #e2e8f0', paddingTop: '4px', marginTop: '4px', color: '#4f46e5' }}>Total: {left.total} KG</div>
+                            </div>
+                          </div>
+                          <div style={{ borderLeft: '1px dashed #cbd5e1', paddingLeft: '12px' }}>
+                            <h5 style={{ margin: '0 0 8px 0', color: '#10b981' }}>May {right.dayNum} ({right.dayOfWeek})</h5>
+                            <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <div>Breakfast: {right.breakfast} KG <strong>({Math.round((right.breakfast * 1000) / occ)}g/head)</strong></div>
+                              <div>Lunch: {right.lunch} KG <strong>({Math.round((right.lunch * 1000) / occ)}g/head)</strong></div>
+                              <div>Dinner: {right.dinner} KG <strong>({Math.round((right.dinner * 1000) / occ)}g/head)</strong></div>
+                              <div style={{ fontSize: '1.05rem', fontWeight: 800, borderTop: '1px solid #e2e8f0', paddingTop: '4px', marginTop: '4px', color: '#10b981' }}>Total: {right.total} KG</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Variance:</span>
+                          <span style={{ fontWeight: 800, color: customDayComparisonResult.diff > 0 ? '#ef4444' : '#10b981' }}>
+                            {customDayComparisonResult.diff > 0 ? `+${customDayComparisonResult.diff}` : customDayComparisonResult.diff} KG ({customDayComparisonResult.pct > 0 ? `+${customDayComparisonResult.pct}` : customDayComparisonResult.pct}%)
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>
 
             {/* Weekly Comparison */}
             <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-              <h4 style={{ margin: '0 0 12px 0', fontSize: '1.05rem', fontWeight: 800 }}>📅 Weekly Trends Comparison</h4>
-              <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '16px' }}>Compare average weekly metrics across May 2026.</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>📅 Weekly Trends Comparison</h4>
+                <select
+                  value={compWeeklyMonth}
+                  onChange={e => setCompWeeklyMonth(e.target.value)}
+                  style={{ padding: '4px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600, fontSize: '0.8rem' }}
+                >
+                  <option value="May 2026">May 2026</option>
+                  <option value="April 2026">April 2026</option>
+                </select>
+              </div>
+              <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '16px' }}>Compare average weekly metrics across {compWeeklyMonth}.</p>
 
               <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
                 <label style={{ flex: 1, fontSize: '0.75rem', fontWeight: 700 }}>
@@ -1217,28 +1521,60 @@ export default function MessDetail() {
 
               {weeklyCompResult && (
                 <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <span>{weeklyCompResult.leftName} Avg:</span>
-                    <strong>{weeklyCompResult.leftVal} KG / day</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <span>{weeklyCompResult.rightName} Avg:</span>
-                    <strong>{weeklyCompResult.rightVal} KG / day</strong>
-                  </div>
-                  <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '8px', marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Difference:</span>
-                    <strong style={{ color: weeklyCompResult.leftVal > weeklyCompResult.rightVal ? '#ef4444' : '#10b981' }}>
-                      {weeklyCompResult.leftVal - weeklyCompResult.rightVal} KG/day
-                    </strong>
-                  </div>
+                  {(() => {
+                    const occ = (blocks.find(b => b.name === selectedBlockWaste) || {}).occupied || 1;
+                    const left = weeklyCompResult.leftDetails;
+                    const right = weeklyCompResult.rightDetails;
+                    return (
+                      <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                          <div>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{weeklyCompResult.leftName} Avg</div>
+                            <div style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
+                              <div>Breakfast: {left.Breakfast} KG/day <strong>({Math.round((left.Breakfast * 1000) / occ)}g/head)</strong></div>
+                              <div>Lunch: {left.Lunch} KG/day <strong>({Math.round((left.Lunch * 1000) / occ)}g/head)</strong></div>
+                              <div>Dinner: {left.Dinner} KG/day <strong>({Math.round((left.Dinner * 1000) / occ)}g/head)</strong></div>
+                              <div style={{ fontSize: '1.05rem', fontWeight: 800, marginTop: '4px', color: '#4f46e5' }}>Total: {weeklyCompResult.leftVal} KG/day</div>
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right', borderLeft: '1px dashed #cbd5e1', paddingLeft: '16px' }}>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{weeklyCompResult.rightName} Avg</div>
+                            <div style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px', alignItems: 'flex-end' }}>
+                              <div>Breakfast: {right.Breakfast} KG/day <strong>({Math.round((right.Breakfast * 1000) / occ)}g/head)</strong></div>
+                              <div>Lunch: {right.Lunch} KG/day <strong>({Math.round((right.Lunch * 1000) / occ)}g/head)</strong></div>
+                              <div>Dinner: {right.Dinner} KG/day <strong>({Math.round((right.Dinner * 1000) / occ)}g/head)</strong></div>
+                              <div style={{ fontSize: '1.05rem', fontWeight: 800, marginTop: '4px', color: '#10b981' }}>Total: {weeklyCompResult.rightVal} KG/day</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Variance:</span>
+                          <span style={{ fontWeight: 800, color: weeklyCompResult.leftVal > weeklyCompResult.rightVal ? '#ef4444' : '#10b981' }}>
+                            {weeklyCompResult.leftVal > weeklyCompResult.rightVal ? `+${weeklyCompResult.leftVal - weeklyCompResult.rightVal}` : weeklyCompResult.leftVal - weeklyCompResult.rightVal} KG/day
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>
 
             {/* Block vs Block Comparison */}
             <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-              <h4 style={{ margin: '0 0 12px 0', fontSize: '1.05rem', fontWeight: 800 }}>🏢 Facility comparison (Block vs Block)</h4>
-              <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '16px' }}>Compare total waste outputs between different hostels side-by-side.</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>🏢 Facility comparison (Block vs Block)</h4>
+                <select
+                  value={compFacilityMonth}
+                  onChange={e => setCompFacilityMonth(e.target.value)}
+                  style={{ padding: '4px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600, fontSize: '0.8rem' }}
+                >
+                  <option value="May 2026">May 2026</option>
+                  <option value="April 2026">April 2026</option>
+                </select>
+              </div>
+              <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '16px' }}>Compare total waste outputs between different hostels for {compFacilityMonth}.</p>
 
               <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
                 <label style={{ flex: 1, fontSize: '0.75rem', fontWeight: 700 }}>
@@ -1271,48 +1607,34 @@ export default function MessDetail() {
                 <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <h5 style={{ margin: '0 0 8px 0', color: '#4f46e5' }}>{blockCompResult.leftName}</h5>
-                    <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div>Today: <strong>{blockCompResult.leftToday} KG</strong></div>
-                      <div>Monthly: <strong>{blockCompResult.leftTotal} KG</strong></div>
-                      <div>Daily Avg: <strong>{blockCompResult.leftAvg} KG</strong></div>
+                    <div style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div>Total Monthly: <strong>{blockCompResult.leftTotal} KG</strong></div>
+                      <div>Avg Daily: <strong>{blockCompResult.leftAvg} KG</strong></div>
+                      <div>Occupied: <strong>{blockCompResult.leftDetails.occupied}</strong></div>
+                      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '4px', marginTop: '4px' }}>
+                        <div>Breakfast: {blockCompResult.leftDetails.breakfast} KG <strong>({blockCompResult.leftDetails.bPerHead}g/head)</strong></div>
+                        <div>Lunch: {blockCompResult.leftDetails.lunch} KG <strong>({blockCompResult.leftDetails.lPerHead}g/head)</strong></div>
+                        <div>Dinner: {blockCompResult.leftDetails.dinner} KG <strong>({blockCompResult.leftDetails.dPerHead}g/head)</strong></div>
+                      </div>
                     </div>
                   </div>
                   <div style={{ borderLeft: '1px dashed #cbd5e1', paddingLeft: '12px' }}>
                     <h5 style={{ margin: '0 0 8px 0', color: '#10b981' }}>{blockCompResult.rightName}</h5>
-                    <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div>Today: <strong>{blockCompResult.rightToday} KG</strong></div>
-                      <div>Monthly: <strong>{blockCompResult.rightTotal} KG</strong></div>
-                      <div>Daily Avg: <strong>{blockCompResult.rightAvg} KG</strong></div>
+                    <div style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div>Total Monthly: <strong>{blockCompResult.rightTotal} KG</strong></div>
+                      <div>Avg Daily: <strong>{blockCompResult.rightAvg} KG</strong></div>
+                      <div>Occupied: <strong>{blockCompResult.rightDetails.occupied}</strong></div>
+                      <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '4px', marginTop: '4px' }}>
+                        <div>Breakfast: {blockCompResult.rightDetails.breakfast} KG <strong>({blockCompResult.rightDetails.bPerHead}g/head)</strong></div>
+                        <div>Lunch: {blockCompResult.rightDetails.lunch} KG <strong>({blockCompResult.rightDetails.lPerHead}g/head)</strong></div>
+                        <div>Dinner: {blockCompResult.rightDetails.dinner} KG <strong>({blockCompResult.rightDetails.dPerHead}g/head)</strong></div>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-          </div>
-
-          {/* Monthly comparison trends chart */}
-          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', marginTop: '24px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-            <h4 style={{ margin: '0 0 16px 0', fontSize: '1rem', fontWeight: 800 }}>📉 Monthly Trends: Current Month (May) vs Last Month (April Averages)</h4>
-            <div style={{ height: '240px' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={[
-                    { name: 'Boys Day Scholar', April: aprilAverages['Boys Day Scholar'], May: getMonthlyTotalAndAverage(wasteLogs, 'Boys Day Scholar').avg },
-                    { name: 'Boys Hostel', April: aprilAverages['Boys Hostel'], May: getMonthlyTotalAndAverage(wasteLogs, 'Boys Hostel').avg },
-                    { name: 'Girls', April: aprilAverages['Girls'], May: getMonthlyTotalAndAverage(wasteLogs, 'Girls').avg },
-                  ]}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="April" fill="#94a3b8" name="April Avg Waste (KG)" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="May" fill="#4f46e5" name="May Avg Waste (KG)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
           </div>
 
         </div>
@@ -1355,7 +1677,7 @@ export default function MessDetail() {
             </div>
 
             <button
-              onClick={() => window.print()}
+              onClick={handleExportPDF}
               style={{ background: '#0f172a', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}
             >
               🖨️ Export PDF
@@ -1403,21 +1725,28 @@ export default function MessDetail() {
                   </tr>
                 </thead>
                 <tbody>
-                  {((wasteLogs || {})[selectedBlockWaste] || []).map(row => (
-                    <tr key={row.date} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '10px 20px', fontWeight: 700 }}>{row.date}</td>
-                      <td style={{ padding: '10px 20px', color: '#475569' }}>{row.dayOfWeek}</td>
-                      <td style={{ padding: '10px 20px' }}>{row.breakfast} KG</td>
-                      <td style={{ padding: '10px 20px' }}>{row.lunch} KG</td>
-                      <td style={{ padding: '10px 20px' }}>{row.dinner} KG</td>
-                      <td style={{ padding: '10px 20px', fontWeight: 700, color: '#4f46e5' }}>{row.total} KG</td>
-                      <td style={{ padding: '10px 20px' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: row.total > 100 ? '#fef2f2' : '#f0fdf4', color: row.total > 100 ? '#ef4444' : '#10b981' }}>
-                          {row.total > 100 ? 'High' : 'Normal'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {((wasteLogs || {})[selectedBlockWaste] || []).map(row => {
+                    const occ = (blocks.find(b => b.name === selectedBlockWaste) || {}).occupied || 1;
+                    const bCount = row.breakfastCount > 0 ? row.breakfastCount : occ;
+                    const lCount = row.lunchCount > 0 ? row.lunchCount : occ;
+                    const dCount = row.dinnerCount > 0 ? row.dinnerCount : occ;
+                    const tCount = (bCount + lCount + dCount) / 3;
+                    return (
+                      <tr key={row.date} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '10px 20px', fontWeight: 700 }}>{row.date}</td>
+                        <td style={{ padding: '10px 20px', color: '#475569' }}>{row.dayOfWeek}</td>
+                        <td style={{ padding: '10px 20px' }}>{row.breakfast} KG <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 600 }}>({Math.round((row.breakfast * 1000) / bCount)}g/head)</span></td>
+                        <td style={{ padding: '10px 20px' }}>{row.lunch} KG <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 600 }}>({Math.round((row.lunch * 1000) / lCount)}g/head)</span></td>
+                        <td style={{ padding: '10px 20px' }}>{row.dinner} KG <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 600 }}>({Math.round((row.dinner * 1000) / dCount)}g/head)</span></td>
+                        <td style={{ padding: '10px 20px', fontWeight: 700, color: '#4f46e5' }}>{row.total} KG <span style={{ fontSize: '0.75rem' }}>({Math.round((row.total * 1000) / tCount)}g/head)</span></td>
+                        <td style={{ padding: '10px 20px' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: row.total > 100 ? '#fef2f2' : '#f0fdf4', color: row.total > 100 ? '#ef4444' : '#10b981' }}>
+                            {row.total > 100 ? 'High' : 'Normal'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

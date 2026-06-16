@@ -889,6 +889,27 @@ export default function HostelsDetail({ currentUser }) {
                   <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{block.occupied}</div>
                 </div>
               </div>
+
+              {/* Attendance Monitor */}
+              <div style={{ marginTop: 12, padding: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#334155', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  🕒 Evening Biometric Attendance
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                  <div style={{ padding: '6px', background: '#f0fdf4', borderRadius: '4px', textAlign: 'center', border: '1px solid #bbf7d0' }}>
+                    <div style={{ fontSize: '0.6rem', color: '#166534', textTransform: 'uppercase', fontWeight: 800 }}>Present</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#15803d' }}>{Math.round(block.occupied * 0.92)}</div>
+                  </div>
+                  <div style={{ padding: '6px', background: '#fffbeb', borderRadius: '4px', textAlign: 'center', border: '1px solid #fde68a' }} title="Already got approval from mentor and warden">
+                    <div style={{ fontSize: '0.6rem', color: '#b45309', textTransform: 'uppercase', fontWeight: 800 }}>Permitted</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#d97706' }}>{Math.round(block.occupied * 0.05)}</div>
+                  </div>
+                  <div style={{ padding: '6px', background: '#fef2f2', borderRadius: '4px', textAlign: 'center', border: '1px solid #fecaca' }} title="Not got permission from warden and mentors">
+                    <div style={{ fontSize: '0.6rem', color: '#991b1b', textTransform: 'uppercase', fontWeight: 800 }}>Unexcused</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#dc2626' }}>{block.occupied - Math.round(block.occupied * 0.92) - Math.round(block.occupied * 0.05)}</div>
+                  </div>
+                </div>
+              </div>
               <div style={{ marginTop: 12, fontSize: '0.7rem', color: '#3b82f6', fontWeight: 800, textAlign: 'center' }}>
                 VIEW BLOCK DETAILS & ROSTER
               </div>
@@ -1764,7 +1785,7 @@ export default function HostelsDetail({ currentUser }) {
               }
 
               const nameExists = blocks.some(b => b.name.toLowerCase() === blockNameClean.toLowerCase());
-              const calcOccupied = (parseInt(newBlockForm.chiefWardenCount) || 0) + (parseInt(newBlockForm.deputyWardenCount) || 0) + (parseInt(newBlockForm.seniorCaretakerCount) || 0) + (parseInt(newBlockForm.caretakerCount) || 0) + (parseInt(newBlockForm.careTakerAttenderCount) || 0) + (parseInt(newBlockForm.houseKeeperCount) || 0) + (parseInt(newBlockForm.bathroomCleanerCount) || 0) + (parseInt(newBlockForm.securityCount) || 0);
+              const calcOccupied = (parseInt(newBlockForm.chiefWardenCount) || 0) + (parseInt(newBlockForm.deputyWardenCount) || 0) + (parseInt(newBlockForm.seniorCaretakerCount) || 0) + (parseInt(newBlockForm.caretakerCount) || 0) + (parseInt(newBlockForm.careTakerAttenderCount) || 0);
               if (nameExists) {
                 alert(`A block named "${blockNameClean}" already exists. Please choose a unique name.`);
                 return;
@@ -1875,7 +1896,7 @@ export default function HostelsDetail({ currentUser }) {
                     Initial Occupancy (Auto-calculated)
                     <input
                       type="number"
-                      value={(parseInt(newBlockForm.chiefWardenCount) || 0) + (parseInt(newBlockForm.deputyWardenCount) || 0) + (parseInt(newBlockForm.seniorCaretakerCount) || 0) + (parseInt(newBlockForm.caretakerCount) || 0) + (parseInt(newBlockForm.careTakerAttenderCount) || 0) + (parseInt(newBlockForm.houseKeeperCount) || 0) + (parseInt(newBlockForm.bathroomCleanerCount) || 0) + (parseInt(newBlockForm.securityCount) || 0)}
+                      value={(parseInt(newBlockForm.chiefWardenCount) || 0) + (parseInt(newBlockForm.deputyWardenCount) || 0) + (parseInt(newBlockForm.seniorCaretakerCount) || 0) + (parseInt(newBlockForm.caretakerCount) || 0) + (parseInt(newBlockForm.careTakerAttenderCount) || 0)}
                       disabled
                       style={{ padding: '10px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', background: '#f1f5f9', color: '#64748b' }}
                     />

@@ -810,7 +810,7 @@ export default function ChillerPlantDetail() {
           onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'}
           onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
         >
-          <div className="kpi-label" style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Installed Chiller Capacity <span style={{ float: 'right', color: '#4f46e5', fontSize: '0.8rem' }}>View Specs ➔</span></div>
+          <div className="kpi-label" style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Installed Chiller Capacity</div>
           <div className="kpi-value" style={{ fontSize: '1.75rem', fontWeight: 800, color: '#4f46e5', marginTop: '6px' }}>1,012 TR</div>
           <div className="kpi-label" style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>DAIKIN (x2) & Dunham-Bush (x1)</div>
         </div>
@@ -821,7 +821,7 @@ export default function ChillerPlantDetail() {
           onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'}
           onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
         >
-          <div className="kpi-label" style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Installed Pump Power <span style={{ float: 'right', color: '#8b5cf6', fontSize: '0.8rem' }}>View Specs ➔</span></div>
+          <div className="kpi-label" style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Installed Pump Power</div>
           <div className="kpi-value" style={{ fontSize: '1.75rem', fontWeight: 800, color: '#8b5cf6', marginTop: '6px' }}>184 kW</div>
           <div className="kpi-label" style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>Condenser, Chilled Water & CT Motors</div>
         </div>
