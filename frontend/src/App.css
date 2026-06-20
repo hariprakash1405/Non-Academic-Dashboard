@@ -1657,3 +1657,6 @@
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+input[type='date']::-webkit-inner-spin-button, input[type='month']::-webkit-inner-spin-button { display: none; -webkit-appearance: none; }
+

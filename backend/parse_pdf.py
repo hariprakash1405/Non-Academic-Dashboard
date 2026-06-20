@@ -33,34 +33,59 @@ def clean_ocr_date(s):
 
 def extract_text_ocr(pdf_path):
     import fitz  # PyMuPDF
-    import easyocr
     
     text = ""
+    reader = None
     try:
-        reader = easyocr.Reader(['en'], verbose=False)
         doc = fitz.open(pdf_path)
         for page_num in range(len(doc)):
             page = doc.load_page(page_num)
             pix = page.get_pixmap(dpi=150)
             img_bytes = pix.tobytes("png")
             
-            results = reader.readtext(img_bytes, detail=1)
-            if results:
+            # Fast-path: Check for native text first
+            native_boxes = []
+            text_dict = page.get_text("dict")
+            scale_x = pix.width / page.rect.width if page.rect.width else 1.0
+            scale_y = pix.height / page.rect.height if page.rect.height else 1.0
+            
+            for block in text_dict.get("blocks", []):
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        t = span.get("text", "").strip()
+                        if t:
+                            x0, y0, x1, y1 = span.get("bbox")
+                            native_boxes.append({
+                                "text": t,
+                                "min_x": x0 * scale_x,
+                                "max_x": x1 * scale_x,
+                                "center_y": ((y0 + y1) / 2) * scale_y
+                            })
+                            
+            if len(native_boxes) > 30:
+                boxes = native_boxes
+            else:
+                if reader is None:
+                    import easyocr
+                    reader = easyocr.Reader(['en'], verbose=False)
+                results = reader.readtext(img_bytes, detail=1)
                 boxes = []
-                for res in results:
-                    bbox, t, _ = res
-                    min_x = min(p[0] for p in bbox)
-                    max_x = max(p[0] for p in bbox)
-                    min_y = min(p[1] for p in bbox)
-                    max_y = max(p[1] for p in bbox)
-                    center_y = (min_y + max_y) / 2
-                    boxes.append({
-                        "text": t,
-                        "min_x": min_x,
-                        "max_x": max_x,
-                        "center_y": center_y
-                    })
+                if results:
+                    for res in results:
+                        bbox, t, _ = res
+                        min_x = min(p[0] for p in bbox)
+                        max_x = max(p[0] for p in bbox)
+                        min_y = min(p[1] for p in bbox)
+                        max_y = max(p[1] for p in bbox)
+                        center_y = (min_y + max_y) / 2
+                        boxes.append({
+                            "text": t,
+                            "min_x": min_x,
+                            "max_x": max_x,
+                            "center_y": center_y
+                        })
                 
+            if boxes:
                 boxes.sort(key=lambda b: b['center_y'])
                 rows = []
                 current_row = []

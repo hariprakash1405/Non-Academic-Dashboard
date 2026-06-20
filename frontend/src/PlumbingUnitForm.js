@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 
 const API = 'http://localhost:8085/api/plumbing';
 const inp = { padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', width: '100%', boxSizing: 'border-box', background: '#fff' };
@@ -11,6 +12,7 @@ const TABS = [
   { key: 'ohts', label: '💧 Overhead Tanks' },
   { key: 'manpower', label: '👷 Manpower' },
   { key: 'runtime', label: '⏱️ Daily Run Time' },
+  { key: 'riverIntake', label: '🌊 River Intake' },
 ];
 
 const Grid = ({ cols = 2, children }) => (
@@ -26,16 +28,49 @@ const Btn = ({ color = 'blue', children, ...p }) => (
   }}>{children}</button>
 );
 
+const FieldBox = ({ label, children }) => (
+  <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+    <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</label>
+    {children}
+  </div>
+);
+
 export default function PlumbingUnitForm({ onDataSaved }) {
   const [tab, setTab] = useState('motors');
   const [toast, setToast] = useState(null);
   const [loading, setLoading] = useState(false);
   const [apiData, setApiData] = useState(null);
 
+  // New Items (Draft)
+  const [newMotors, setNewMotors] = useState([]);
+  const [newSumps, setNewSumps] = useState([]);
+  const [newOhts, setNewOhts] = useState([]);
+  const [newManpower, setNewManpower] = useState([]);
+  const [newRuntimes, setNewRuntimes] = useState([]);
+  const [newRiverIntakes, setNewRiverIntakes] = useState([]);
+
+  // Existing Items (For Edit)
+  const [existingMotors, setExistingMotors] = useState([]);
+  const [existingSumps, setExistingSumps] = useState([]);
+  const [existingOhts, setExistingOhts] = useState([]);
+  const [existingManpower, setExistingManpower] = useState([]);
+  const [existingRuntimes, setExistingRuntimes] = useState([]);
+  const [existingRiverIntakes, setExistingRiverIntakes] = useState([]);
+
   const fetchData = () => {
     fetch(API)
       .then(r => r.json())
-      .then(d => setApiData(d))
+      .then(d => {
+        setApiData(d);
+        if (d) {
+          setExistingMotors(d.motors || []);
+          setExistingSumps(d.sumps || []);
+          setExistingOhts(d.ohts || []);
+          setExistingManpower(d.manpower || []);
+          setExistingRuntimes(d.runtimes || []);
+          setExistingRiverIntakes(d.riverIntakes || []);
+        }
+      })
       .catch(() => {});
   };
 
@@ -43,46 +78,42 @@ export default function PlumbingUnitForm({ onDataSaved }) {
     fetchData();
   }, []);
 
-  const motors = apiData?.motors || [];
-  const sumps = apiData?.sumps || [];
-  const ohts = apiData?.ohts || [];
-  const manpower = apiData?.manpower || [];
-
-  const [motorForm, setMotorForm] = useState({ motorId: '', location: '', type: 'Submersible', power: '', opHours: '', nextService: '', status: 'Active', connectedTank: '' });
-  const [sumpForm, setSumpForm] = useState({ sumpId: '', location: '', capacity: '', pumpPower: '', status: 'Active' });
-  const [ohtForm, setOhtForm] = useState({ ohtId: '', location: '', capacity: '', lastCleaned: '', status: 'Active' });
-  const [manpowerForm, setManpowerForm] = useState({ empId: '', name: '', designation: '', contact: '', skill: '', type: 'Permanent', shift: 'Morning', status: 'Active', attendance: 'Present', assignedArea: '' });
-  const [runTimeForm, setRunTimeForm] = useState({ date: new Date().toISOString().split('T')[0], motorId: '', s1: '', s2: '', s3: '', s4: '' });
-
-  const [delMotor, setDelMotor] = useState('');
-  const [delSump, setDelSump] = useState('');
-  const [delOht, setDelOht] = useState('');
-  const [delManpower, setDelManpower] = useState('');
-
-  // Pre-fill runtime form if log already exists (Edit Mode)
-  useEffect(() => {
-    if (tab === 'runtime' && apiData && apiData.runtimes) {
-      const existing = apiData.runtimes.find(r => r.date === runTimeForm.date && r.motorId === runTimeForm.motorId);
-      if (existing) {
-        setRunTimeForm(prev => ({
-          ...prev,
-          s1: existing.s1 || '',
-          s2: existing.s2 || '',
-          s3: existing.s3 || '',
-          s4: existing.s4 || ''
-        }));
-      } else {
-        setRunTimeForm(prev => ({
-          ...prev,
-          s1: '', s2: '', s3: '', s4: ''
-        }));
-      }
-    }
-  }, [runTimeForm.date, runTimeForm.motorId, tab, apiData]);
-
   const toast$ = (msg, ok = true) => {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleGenericFileUpload = (setState, schema, e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target.result;
+        const workbook = XLSX.read(bstr, { type: 'binary' });
+        const wsname = workbook.SheetNames[0];
+        const ws = workbook.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+        
+        const newRows = data.map(row => {
+          const newObj = {};
+          Object.keys(schema).forEach(key => {
+            const matchedKey = Object.keys(row).find(rKey => rKey.toLowerCase().replace(/[^a-z0-9]/g, '') === key.toLowerCase().replace(/[^a-z0-9]/g));
+            newObj[key] = matchedKey ? String(row[matchedKey] || '') : schema[key];
+          });
+          return newObj;
+        });
+        
+        if (newRows.length > 0) {
+          setState(prev => [...(prev || []), ...newRows]);
+        }
+      } catch (err) {
+        console.error("Error parsing Excel:", err);
+        alert("Failed to parse Excel file.");
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = null;
   };
 
   const post = async (url, body, msg, reset) => {
@@ -96,9 +127,8 @@ export default function PlumbingUnitForm({ onDataSaved }) {
       }
       toast$(msg);
       fetchData();
-      reset && reset();
-      onDataSaved && onDataSaved();
-      // Dispatch event so PlumbingDetail refreshes
+      if (reset) reset();
+      if (onDataSaved) onDataSaved();
       window.dispatchEvent(new Event('plumbing-updated'));
     } catch {
       toast$('Connection error', false);
@@ -106,75 +136,17 @@ export default function PlumbingUnitForm({ onDataSaved }) {
     setLoading(false);
   };
 
-  const submitMotor = e => {
-    e.preventDefault();
-    if (!motorForm.motorId) { toast$('Motor ID required', false); return; }
-    post(`${API}/add-motors`, [motorForm], 'Motor added successfully!', () => setMotorForm({ motorId: '', location: '', type: 'Submersible', power: '', opHours: '', nextService: '', status: 'Active', connectedTank: '' }));
-  };
-
-  const submitDeleteMotor = e => {
-    e.preventDefault();
-    if (!delMotor) return;
-    post(`${API}/delete-motor?id=${delMotor}`, {}, 'Motor deleted!', () => setDelMotor(''));
-  };
-
-  const submitSump = e => {
-    e.preventDefault();
-    if (!sumpForm.sumpId) { toast$('Sump ID required', false); return; }
-    post(`${API}/add-sumps`, [sumpForm], 'Sump added successfully!', () => setSumpForm({ sumpId: '', location: '', capacity: '', pumpPower: '', status: 'Active' }));
-  };
-
-  const submitDeleteSump = e => {
-    e.preventDefault();
-    if (!delSump) return;
-    post(`${API}/delete-sump?id=${delSump}`, {}, 'Sump deleted!', () => setDelSump(''));
-  };
-
-  const submitOht = e => {
-    e.preventDefault();
-    if (!ohtForm.ohtId) { toast$('OHT ID required', false); return; }
-    post(`${API}/add-ohts`, [ohtForm], 'OHT added successfully!', () => setOhtForm({ ohtId: '', location: '', capacity: '', lastCleaned: '', status: 'Active' }));
-  };
-
-  const submitDeleteOht = e => {
-    e.preventDefault();
-    if (!delOht) return;
-    post(`${API}/delete-oht?id=${delOht}`, {}, 'OHT deleted!', () => setDelOht(''));
-  };
-
-  const submitManpower = e => {
-    e.preventDefault();
-    if (!manpowerForm.empId) { toast$('Employee ID required', false); return; }
-    post(`${API}/add-manpower`, [manpowerForm], 'Manpower added successfully!', () => setManpowerForm({ empId: '', name: '', designation: '', contact: '', skill: '', type: 'Permanent', shift: 'Morning', status: 'Active', attendance: 'Present', assignedArea: '' }));
-  };
-
-  const submitDeleteManpower = e => {
-    e.preventDefault();
-    if (!delManpower) return;
-    post(`${API}/delete-manpower?id=${delManpower}`, {}, 'Manpower deleted!', () => setDelManpower(''));
-  };
-
-  const submitRunTime = e => {
-    e.preventDefault();
-    if (!runTimeForm.motorId) { toast$('Motor required', false); return; }
-
-    const s1 = parseFloat(runTimeForm.s1) || 0;
-    const s2 = parseFloat(runTimeForm.s2) || 0;
-    const s3 = parseFloat(runTimeForm.s3) || 0;
-    const s4 = parseFloat(runTimeForm.s4) || 0;
-    
-    const payload = {
-        date: runTimeForm.date,
-        motorId: runTimeForm.motorId,
-        peakRun: (s1 + s3).toString(),
-        offPeakRun: s2.toString(),
-        nightRun: s4.toString(),
-        s1: runTimeForm.s1, s2: runTimeForm.s2, s3: runTimeForm.s3, s4: runTimeForm.s4
-    };
-
-    post(`${API}/add-runtime`, [payload], 'Run time logged successfully!', () => {
-        setRunTimeForm({ date: new Date().toISOString().split('T')[0], motorId: '', s1: '', s2: '', s3: '', s4: '' });
-    });
+  const handleDelete = async (url, idMsg) => {
+    setLoading(true);
+    try {
+      const r = await fetch(url, { method: 'DELETE' });
+      if (!r.ok) { toast$(await r.text(), false); setLoading(false); return; }
+      toast$(idMsg + ' deleted!');
+      fetchData();
+      if (onDataSaved) onDataSaved();
+      window.dispatchEvent(new Event('plumbing-updated'));
+    } catch { toast$('Connection error', false); }
+    setLoading(false);
   };
 
   return (
@@ -209,237 +181,511 @@ export default function PlumbingUnitForm({ onDataSaved }) {
       ) : (
          <>
             {tab === 'motors' && (
-              <>
-                <form onSubmit={submitMotor}>
-                  <div style={sec}>
-                    <h4 style={{ margin: '0 0 14px' }}>⚙️ Add New Motor / Pump</h4>
-                    <Grid cols={3}>
-                      <label style={lbl}>Motor ID *<input style={inp} value={motorForm.motorId} onChange={e => setMotorForm(f => ({...f, motorId: e.target.value}))} placeholder="e.g. MTR-10" required /></label>
-                      <label style={lbl}>Location<input style={inp} value={motorForm.location} onChange={e => setMotorForm(f => ({...f, location: e.target.value}))} placeholder="e.g. Science Block" /></label>
-                      <label style={lbl}>Type
-                        <select style={inp} value={motorForm.type} onChange={e => setMotorForm(f => ({...f, type: e.target.value}))}>
-                          <option>Submersible</option><option>Centrifugal</option><option>Booster</option><option>Borewell</option>
-                        </select>
+              <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
+                <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                    <h4 style={{ margin: 0, color: '#0f172a' }}>⚙️ Motors & Pumps Data Entry</h4>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                        + Upload Excel
+                        <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setNewMotors, { motorId: '', location: '', type: 'Submersible', power: '', opHours: '', nextService: '', status: 'Active', connectedTank: '' }, e)} style={{ display: 'none' }} />
                       </label>
-                      <label style={lbl}>Power Rating (HP)<input style={inp} value={motorForm.power} onChange={e => setMotorForm(f => ({...f, power: e.target.value}))} placeholder="e.g. 5 HP" /></label>
-                      <label style={lbl}>Operating Hours<input style={inp} value={motorForm.opHours} onChange={e => setMotorForm(f => ({...f, opHours: e.target.value}))} placeholder="e.g. 8 hrs/day" /></label>
-                      <label style={lbl}>Connected Tank/Sump<input style={inp} value={motorForm.connectedTank} onChange={e => setMotorForm(f => ({...f, connectedTank: e.target.value}))} placeholder="e.g. SMP-01 or OHT-02" /></label>
-                      <label style={lbl}>Next Service Date<input type="date" style={inp} value={motorForm.nextService} onChange={e => setMotorForm(f => ({...f, nextService: e.target.value}))} /></label>
-                      <label style={lbl}>Status
-                        <select style={inp} value={motorForm.status} onChange={e => setMotorForm(f => ({...f, status: e.target.value}))}>
-                          <option>Active</option><option>Maintenance</option><option>Inactive</option>
-                        </select>
-                      </label>
-                    </Grid>
-                    <div style={{ marginTop: '16px' }}>
-                      <Btn color="blue" type="submit" disabled={loading}>{loading ? 'Saving...' : 'Save Motor'}</Btn>
+                      <button onClick={() => setNewMotors([...newMotors, { motorId: '', location: '', type: 'Submersible', power: '', opHours: '', nextService: '', status: 'Active', connectedTank: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Motor</button>
                     </div>
                   </div>
-                </form>
-                <form onSubmit={submitDeleteMotor}>
-                  <div style={{ ...sec, background: '#fff5f5', borderColor: '#fee2e2' }}>
-                    <h4 style={{ margin: '0 0 14px', color: '#991b1b' }}>⚠️ Delete Motor</h4>
-                    <Grid>
-                      <label style={lbl}>Select Motor to Delete *
-                        <select style={inp} value={delMotor} onChange={e => setDelMotor(e.target.value)} required>
-                          <option value="">Select...</option>
-                          {motors.map(m => <option key={m.id} value={m.id}>{m.motorId} - {m.location}</option>)}
-                        </select>
-                      </label>
-                    </Grid>
-                    <div style={{ marginTop: '16px' }}>
-                      <Btn color="red" type="submit" disabled={loading}>Delete Motor</Btn>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto' }}>
+                    {newMotors.map((u, i) => (
+                      <div key={`newMotors-${i}`} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                          <FieldBox label="Motor ID"><input style={inp} value={u.motorId} onChange={e => { const n = [...newMotors]; n[i].motorId = e.target.value; setNewMotors(n); }} placeholder="e.g. MTR-10" required /></FieldBox>
+                          <FieldBox label="Location"><input style={inp} value={u.location} onChange={e => { const n = [...newMotors]; n[i].location = e.target.value; setNewMotors(n); }} placeholder="e.g. Science Block" /></FieldBox>
+                          <FieldBox label="Type">
+                            <select style={inp} value={u.type} onChange={e => { const n = [...newMotors]; n[i].type = e.target.value; setNewMotors(n); }}>
+                              <option>Submersible</option><option>Centrifugal</option><option>Booster</option><option>Borewell</option>
+                            </select>
+                          </FieldBox>
+                          <FieldBox label="Power Rating (HP)"><input style={inp} value={u.power} onChange={e => { const n = [...newMotors]; n[i].power = e.target.value; setNewMotors(n); }} placeholder="e.g. 5 HP" /></FieldBox>
+                          <FieldBox label="Op Hours"><input style={inp} value={u.opHours} onChange={e => { const n = [...newMotors]; n[i].opHours = e.target.value; setNewMotors(n); }} placeholder="e.g. 8 hrs/day" /></FieldBox>
+                          <FieldBox label="Tank/Sump"><input style={inp} value={u.connectedTank} onChange={e => { const n = [...newMotors]; n[i].connectedTank = e.target.value; setNewMotors(n); }} placeholder="e.g. SMP-01" /></FieldBox>
+                          <FieldBox label="Next Service"><input type="date" style={inp} value={u.nextService} onChange={e => { const n = [...newMotors]; n[i].nextService = e.target.value; setNewMotors(n); }} /></FieldBox>
+                          <FieldBox label="Status">
+                            <select style={inp} value={u.status} onChange={e => { const n = [...newMotors]; n[i].status = e.target.value; setNewMotors(n); }}>
+                              <option>Active</option><option>Maintenance</option><option>Inactive</option>
+                            </select>
+                          </FieldBox>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                          <button onClick={() => setNewMotors(newMotors.filter((_, idx) => idx !== i))} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Cancel</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {newMotors.length > 0 && (
+                    <div style={{ marginTop: '16px', textAlign: 'right' }}>
+                      <button style={{ padding: '10px 20px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.3)' }} 
+                        onClick={() => post(`${API}/add-motors`, newMotors, 'Motors added!', () => setNewMotors([]))}>
+                        Save New Motors
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {existingMotors.length > 0 && (
+                  <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                      <h4 style={{ margin: 0, color: '#0f172a' }}>📋 Existing Motors</h4>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
+                      {existingMotors.map((u, i) => (
+                        <div key={u.id || i} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                            <FieldBox label="Motor ID"><input style={{...inp, background: '#f1f5f9'}} value={u.motorId || ''} onChange={e => { const n = [...existingMotors]; n[i].motorId = e.target.value; setExistingMotors(n); }} /></FieldBox>
+                            <FieldBox label="Location"><input style={{...inp, background: '#f1f5f9'}} value={u.location || ''} onChange={e => { const n = [...existingMotors]; n[i].location = e.target.value; setExistingMotors(n); }} /></FieldBox>
+                            <FieldBox label="Type">
+                              <select style={{...inp, background: '#f1f5f9'}} value={u.type || ''} onChange={e => { const n = [...existingMotors]; n[i].type = e.target.value; setExistingMotors(n); }}>
+                                <option>Submersible</option><option>Centrifugal</option><option>Booster</option><option>Borewell</option>
+                              </select>
+                            </FieldBox>
+                            <FieldBox label="Power"><input style={{...inp, background: '#f1f5f9'}} value={u.power || ''} onChange={e => { const n = [...existingMotors]; n[i].power = e.target.value; setExistingMotors(n); }} /></FieldBox>
+                            <FieldBox label="Op Hours"><input style={{...inp, background: '#f1f5f9'}} value={u.opHours || ''} onChange={e => { const n = [...existingMotors]; n[i].opHours = e.target.value; setExistingMotors(n); }} /></FieldBox>
+                            <FieldBox label="Tank/Sump"><input style={{...inp, background: '#f1f5f9'}} value={u.connectedTank || ''} onChange={e => { const n = [...existingMotors]; n[i].connectedTank = e.target.value; setExistingMotors(n); }} /></FieldBox>
+                            <FieldBox label="Next Service"><input type="date" style={{...inp, background: '#f1f5f9'}} value={u.nextService || ''} onChange={e => { const n = [...existingMotors]; n[i].nextService = e.target.value; setExistingMotors(n); }} /></FieldBox>
+                            <FieldBox label="Status">
+                              <select style={{...inp, background: '#f1f5f9'}} value={u.status || ''} onChange={e => { const n = [...existingMotors]; n[i].status = e.target.value; setExistingMotors(n); }}>
+                                <option>Active</option><option>Maintenance</option><option>Inactive</option>
+                              </select>
+                            </FieldBox>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                            <button onClick={() => post(`${API}/add-motors`, [u], 'Motor updated!')} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
+                            <button onClick={() => handleDelete(`${API}/delete-motor?id=${u.id}`, 'Motor')} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove</button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </form>
-              </>
+                )}
+              </div>
             )}
 
             {tab === 'sumps' && (
-              <>
-                <form onSubmit={submitSump}>
-                  <div style={sec}>
-                    <h4 style={{ margin: '0 0 14px' }}>🚰 Add New Sump</h4>
-                    <Grid cols={2}>
-                      <label style={lbl}>Sump ID *<input style={inp} value={sumpForm.sumpId} onChange={e => setSumpForm(f => ({...f, sumpId: e.target.value}))} placeholder="e.g. SMP-05" required /></label>
-                      <label style={lbl}>Location<input style={inp} value={sumpForm.location} onChange={e => setSumpForm(f => ({...f, location: e.target.value}))} /></label>
-                      <label style={lbl}>Capacity<input style={inp} value={sumpForm.capacity} onChange={e => setSumpForm(f => ({...f, capacity: e.target.value}))} placeholder="e.g. 50,000 L" /></label>
-                      <label style={lbl}>Pump Power<input style={inp} value={sumpForm.pumpPower} onChange={e => setSumpForm(f => ({...f, pumpPower: e.target.value}))} placeholder="e.g. 10 HP" /></label>
-                      <label style={lbl}>Status
-                        <select style={inp} value={sumpForm.status} onChange={e => setSumpForm(f => ({...f, status: e.target.value}))}>
-                          <option>Active</option><option>Maintenance</option><option>Inactive</option>
-                        </select>
+              <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
+                <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                    <h4 style={{ margin: 0, color: '#0f172a' }}>🚰 UG Sumps Data Entry</h4>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                        + Upload Excel
+                        <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setNewSumps, { sumpId: '', location: '', capacity: '', pumpPower: '', status: 'Active' }, e)} style={{ display: 'none' }} />
                       </label>
-                    </Grid>
-                    <div style={{ marginTop: '16px' }}>
-                      <Btn color="blue" type="submit" disabled={loading}>Save Sump</Btn>
+                      <button onClick={() => setNewSumps([...newSumps, { sumpId: '', location: '', capacity: '', pumpPower: '', status: 'Active' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Sump</button>
                     </div>
                   </div>
-                </form>
-                <form onSubmit={submitDeleteSump}>
-                  <div style={{ ...sec, background: '#fff5f5', borderColor: '#fee2e2' }}>
-                    <h4 style={{ margin: '0 0 14px', color: '#991b1b' }}>⚠️ Delete Sump</h4>
-                    <Grid>
-                      <label style={lbl}>Select Sump *
-                        <select style={inp} value={delSump} onChange={e => setDelSump(e.target.value)} required>
-                          <option value="">Select...</option>
-                          {sumps.map(s => <option key={s.id} value={s.id}>{s.sumpId} - {s.location}</option>)}
-                        </select>
-                      </label>
-                    </Grid>
-                    <div style={{ marginTop: '16px' }}>
-                      <Btn color="red" type="submit" disabled={loading}>Delete Sump</Btn>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto' }}>
+                    {newSumps.map((u, i) => (
+                      <div key={`newSumps-${i}`} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                          <FieldBox label="Sump ID"><input style={inp} value={u.sumpId} onChange={e => { const n = [...newSumps]; n[i].sumpId = e.target.value; setNewSumps(n); }} placeholder="e.g. SMP-05" required /></FieldBox>
+                          <FieldBox label="Location"><input style={inp} value={u.location} onChange={e => { const n = [...newSumps]; n[i].location = e.target.value; setNewSumps(n); }} /></FieldBox>
+                          <FieldBox label="Capacity"><input style={inp} value={u.capacity} onChange={e => { const n = [...newSumps]; n[i].capacity = e.target.value; setNewSumps(n); }} placeholder="e.g. 50,000 L" /></FieldBox>
+                          <FieldBox label="Pump Power"><input style={inp} value={u.pumpPower} onChange={e => { const n = [...newSumps]; n[i].pumpPower = e.target.value; setNewSumps(n); }} placeholder="e.g. 10 HP" /></FieldBox>
+                          <FieldBox label="Status">
+                            <select style={inp} value={u.status} onChange={e => { const n = [...newSumps]; n[i].status = e.target.value; setNewSumps(n); }}>
+                              <option>Active</option><option>Maintenance</option><option>Inactive</option>
+                            </select>
+                          </FieldBox>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                          <button onClick={() => setNewSumps(newSumps.filter((_, idx) => idx !== i))} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Cancel</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {newSumps.length > 0 && (
+                    <div style={{ marginTop: '16px', textAlign: 'right' }}>
+                      <button style={{ padding: '10px 20px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.3)' }} 
+                        onClick={() => post(`${API}/add-sumps`, newSumps, 'Sumps added!', () => setNewSumps([]))}>
+                        Save New Sumps
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {existingSumps.length > 0 && (
+                  <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                      <h4 style={{ margin: 0, color: '#0f172a' }}>📋 Existing Sumps</h4>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
+                      {existingSumps.map((u, i) => (
+                        <div key={u.id || i} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                            <FieldBox label="Sump ID"><input style={{...inp, background: '#f1f5f9'}} value={u.sumpId || ''} onChange={e => { const n = [...existingSumps]; n[i].sumpId = e.target.value; setExistingSumps(n); }} /></FieldBox>
+                            <FieldBox label="Location"><input style={{...inp, background: '#f1f5f9'}} value={u.location || ''} onChange={e => { const n = [...existingSumps]; n[i].location = e.target.value; setExistingSumps(n); }} /></FieldBox>
+                            <FieldBox label="Capacity"><input style={{...inp, background: '#f1f5f9'}} value={u.capacity || ''} onChange={e => { const n = [...existingSumps]; n[i].capacity = e.target.value; setExistingSumps(n); }} /></FieldBox>
+                            <FieldBox label="Pump Power"><input style={{...inp, background: '#f1f5f9'}} value={u.pumpPower || ''} onChange={e => { const n = [...existingSumps]; n[i].pumpPower = e.target.value; setExistingSumps(n); }} /></FieldBox>
+                            <FieldBox label="Status">
+                              <select style={{...inp, background: '#f1f5f9'}} value={u.status || ''} onChange={e => { const n = [...existingSumps]; n[i].status = e.target.value; setExistingSumps(n); }}>
+                                <option>Active</option><option>Maintenance</option><option>Inactive</option>
+                              </select>
+                            </FieldBox>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                            <button onClick={() => post(`${API}/add-sumps`, [u], 'Sump updated!')} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
+                            <button onClick={() => handleDelete(`${API}/delete-sump?id=${u.id}`, 'Sump')} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove</button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </form>
-              </>
+                )}
+              </div>
             )}
 
             {tab === 'ohts' && (
-              <>
-                <form onSubmit={submitOht}>
-                  <div style={sec}>
-                    <h4 style={{ margin: '0 0 14px' }}>💧 Add New OHT</h4>
-                    <Grid cols={2}>
-                      <label style={lbl}>OHT ID *<input style={inp} value={ohtForm.ohtId} onChange={e => setOhtForm(f => ({...f, ohtId: e.target.value}))} placeholder="e.g. OHT-05" required /></label>
-                      <label style={lbl}>Location<input style={inp} value={ohtForm.location} onChange={e => setOhtForm(f => ({...f, location: e.target.value}))} /></label>
-                      <label style={lbl}>Capacity<input style={inp} value={ohtForm.capacity} onChange={e => setOhtForm(f => ({...f, capacity: e.target.value}))} placeholder="e.g. 20,000 L" /></label>
-                      <label style={lbl}>Last Cleaned Date<input type="date" style={inp} value={ohtForm.lastCleaned} onChange={e => setOhtForm(f => ({...f, lastCleaned: e.target.value}))} /></label>
-                      <label style={lbl}>Status
-                        <select style={inp} value={ohtForm.status} onChange={e => setOhtForm(f => ({...f, status: e.target.value}))}>
-                          <option>Active</option><option>Maintenance</option><option>Inactive</option>
-                        </select>
+              <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
+                <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                    <h4 style={{ margin: 0, color: '#0f172a' }}>💧 Overhead Tanks Data Entry</h4>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                        + Upload Excel
+                        <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setNewOhts, { ohtId: '', location: '', capacity: '', lastCleaned: '', status: 'Active' }, e)} style={{ display: 'none' }} />
                       </label>
-                    </Grid>
-                    <div style={{ marginTop: '16px' }}>
-                      <Btn color="blue" type="submit" disabled={loading}>Save OHT</Btn>
+                      <button onClick={() => setNewOhts([...newOhts, { ohtId: '', location: '', capacity: '', lastCleaned: '', status: 'Active' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add OHT</button>
                     </div>
                   </div>
-                </form>
-                <form onSubmit={submitDeleteOht}>
-                  <div style={{ ...sec, background: '#fff5f5', borderColor: '#fee2e2' }}>
-                    <h4 style={{ margin: '0 0 14px', color: '#991b1b' }}>⚠️ Delete OHT</h4>
-                    <Grid>
-                      <label style={lbl}>Select OHT *
-                        <select style={inp} value={delOht} onChange={e => setDelOht(e.target.value)} required>
-                          <option value="">Select...</option>
-                          {ohts.map(o => <option key={o.id} value={o.id}>{o.ohtId} - {o.location}</option>)}
-                        </select>
-                      </label>
-                    </Grid>
-                    <div style={{ marginTop: '16px' }}>
-                      <Btn color="red" type="submit" disabled={loading}>Delete OHT</Btn>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto' }}>
+                    {newOhts.map((u, i) => (
+                      <div key={`newOhts-${i}`} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                          <FieldBox label="OHT ID"><input style={inp} value={u.ohtId} onChange={e => { const n = [...newOhts]; n[i].ohtId = e.target.value; setNewOhts(n); }} placeholder="e.g. OHT-05" required /></FieldBox>
+                          <FieldBox label="Location"><input style={inp} value={u.location} onChange={e => { const n = [...newOhts]; n[i].location = e.target.value; setNewOhts(n); }} /></FieldBox>
+                          <FieldBox label="Capacity"><input style={inp} value={u.capacity} onChange={e => { const n = [...newOhts]; n[i].capacity = e.target.value; setNewOhts(n); }} placeholder="e.g. 20,000 L" /></FieldBox>
+                          <FieldBox label="Last Cleaned"><input type="date" style={inp} value={u.lastCleaned} onChange={e => { const n = [...newOhts]; n[i].lastCleaned = e.target.value; setNewOhts(n); }} /></FieldBox>
+                          <FieldBox label="Status">
+                            <select style={inp} value={u.status} onChange={e => { const n = [...newOhts]; n[i].status = e.target.value; setNewOhts(n); }}>
+                              <option>Active</option><option>Maintenance</option><option>Inactive</option>
+                            </select>
+                          </FieldBox>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                          <button onClick={() => setNewOhts(newOhts.filter((_, idx) => idx !== i))} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Cancel</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {newOhts.length > 0 && (
+                    <div style={{ marginTop: '16px', textAlign: 'right' }}>
+                      <button style={{ padding: '10px 20px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.3)' }} 
+                        onClick={() => post(`${API}/add-ohts`, newOhts, 'OHTs added!', () => setNewOhts([]))}>
+                        Save New OHTs
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {existingOhts.length > 0 && (
+                  <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                      <h4 style={{ margin: 0, color: '#0f172a' }}>📋 Existing OHTs</h4>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
+                      {existingOhts.map((u, i) => (
+                        <div key={u.id || i} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                            <FieldBox label="OHT ID"><input style={{...inp, background: '#f1f5f9'}} value={u.ohtId || ''} onChange={e => { const n = [...existingOhts]; n[i].ohtId = e.target.value; setExistingOhts(n); }} /></FieldBox>
+                            <FieldBox label="Location"><input style={{...inp, background: '#f1f5f9'}} value={u.location || ''} onChange={e => { const n = [...existingOhts]; n[i].location = e.target.value; setExistingOhts(n); }} /></FieldBox>
+                            <FieldBox label="Capacity"><input style={{...inp, background: '#f1f5f9'}} value={u.capacity || ''} onChange={e => { const n = [...existingOhts]; n[i].capacity = e.target.value; setExistingOhts(n); }} /></FieldBox>
+                            <FieldBox label="Last Cleaned"><input type="date" style={{...inp, background: '#f1f5f9'}} value={u.lastCleaned || ''} onChange={e => { const n = [...existingOhts]; n[i].lastCleaned = e.target.value; setExistingOhts(n); }} /></FieldBox>
+                            <FieldBox label="Status">
+                              <select style={{...inp, background: '#f1f5f9'}} value={u.status || ''} onChange={e => { const n = [...existingOhts]; n[i].status = e.target.value; setExistingOhts(n); }}>
+                                <option>Active</option><option>Maintenance</option><option>Inactive</option>
+                              </select>
+                            </FieldBox>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                            <button onClick={() => post(`${API}/add-ohts`, [u], 'OHT updated!')} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
+                            <button onClick={() => handleDelete(`${API}/delete-oht?id=${u.id}`, 'OHT')} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove</button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </form>
-              </>
+                )}
+              </div>
             )}
+
             {tab === 'manpower' && (
-              <>
-                <form onSubmit={submitManpower}>
-                  <div style={sec}>
-                    <h4 style={{ margin: '0 0 14px' }}>👷 Add New Personnel</h4>
-                    <Grid cols={3}>
-                      <label style={lbl}>Employee ID *<input style={inp} value={manpowerForm.empId} onChange={e => setManpowerForm(f => ({...f, empId: e.target.value}))} placeholder="e.g. EMP-P01" required /></label>
-                      <label style={lbl}>Name<input style={inp} value={manpowerForm.name} onChange={e => setManpowerForm(f => ({...f, name: e.target.value}))} placeholder="e.g. Ramesh Kumar" /></label>
-                      <label style={lbl}>Designation<input style={inp} value={manpowerForm.designation} onChange={e => setManpowerForm(f => ({...f, designation: e.target.value}))} placeholder="e.g. Senior Plumber" /></label>
-                      <label style={lbl}>Contact<input style={inp} value={manpowerForm.contact} onChange={e => setManpowerForm(f => ({...f, contact: e.target.value}))} placeholder="+91 9876543210" /></label>
-                      <label style={lbl}>Skill<input style={inp} value={manpowerForm.skill} onChange={e => setManpowerForm(f => ({...f, skill: e.target.value}))} placeholder="e.g. Pipe Fitting" /></label>
-                      <label style={lbl}>Type
-                        <select style={inp} value={manpowerForm.type} onChange={e => setManpowerForm(f => ({...f, type: e.target.value}))}>
-                          <option>Permanent</option><option>Contract</option><option>Outsourced</option>
-                        </select>
+              <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
+                <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                    <h4 style={{ margin: 0, color: '#0f172a' }}>👷 Manpower Data Entry</h4>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                        + Upload Excel
+                        <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setNewManpower, { empId: '', name: '', designation: '', contact: '', skill: '', type: 'Permanent', shift: 'Morning', status: 'Active', attendance: 'Present', assignedArea: '' }, e)} style={{ display: 'none' }} />
                       </label>
-                      <label style={lbl}>Shift
-                        <select style={inp} value={manpowerForm.shift} onChange={e => setManpowerForm(f => ({...f, shift: e.target.value}))}>
-                          <option>Morning</option><option>General</option><option>Evening</option><option>Night</option>
-                        </select>
-                      </label>
-                      <label style={lbl}>Status
-                        <select style={inp} value={manpowerForm.status} onChange={e => setManpowerForm(f => ({...f, status: e.target.value}))}>
-                          <option>Active</option><option>On Leave</option><option>Inactive</option>
-                        </select>
-                      </label>
-                      <label style={lbl}>Attendance
-                        <select style={inp} value={manpowerForm.attendance} onChange={e => setManpowerForm(f => ({...f, attendance: e.target.value}))}>
-                          <option>Present</option><option>Absent</option><option>On Leave</option>
-                        </select>
-                      </label>
-                      <label style={lbl}>Assigned Area<input style={inp} value={manpowerForm.assignedArea} onChange={e => setManpowerForm(f => ({...f, assignedArea: e.target.value}))} placeholder="e.g. Main Pump House" /></label>
-                    </Grid>
-                    <div style={{ marginTop: '16px' }}>
-                      <Btn color="blue" type="submit" disabled={loading}>Save Personnel</Btn>
+                      <button onClick={() => setNewManpower([...newManpower, { empId: '', name: '', designation: '', contact: '', skill: '', type: 'Permanent', shift: 'Morning', status: 'Active', attendance: 'Present', assignedArea: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Personnel</button>
                     </div>
                   </div>
-                </form>
-                <form onSubmit={submitDeleteManpower}>
-                  <div style={{ ...sec, background: '#fff5f5', borderColor: '#fee2e2' }}>
-                    <h4 style={{ margin: '0 0 14px', color: '#991b1b' }}>⚠️ Delete Personnel</h4>
-                    <Grid>
-                      <label style={lbl}>Select Personnel *
-                        <select style={inp} value={delManpower} onChange={e => setDelManpower(e.target.value)} required>
-                          <option value="">Select...</option>
-                          {manpower.map(m => <option key={m.id} value={m.id}>{m.empId} - {m.name}</option>)}
-                        </select>
-                      </label>
-                    </Grid>
-                    <div style={{ marginTop: '16px' }}>
-                      <Btn color="red" type="submit" disabled={loading}>Delete Personnel</Btn>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto' }}>
+                    {newManpower.map((u, i) => (
+                      <div key={`newManpower-${i}`} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                          <FieldBox label="Emp ID"><input style={inp} value={u.empId} onChange={e => { const n = [...newManpower]; n[i].empId = e.target.value; setNewManpower(n); }} placeholder="e.g. EMP-01" required /></FieldBox>
+                          <FieldBox label="Name"><input style={inp} value={u.name} onChange={e => { const n = [...newManpower]; n[i].name = e.target.value; setNewManpower(n); }} /></FieldBox>
+                          <FieldBox label="Designation"><input style={inp} value={u.designation} onChange={e => { const n = [...newManpower]; n[i].designation = e.target.value; setNewManpower(n); }} /></FieldBox>
+                          <FieldBox label="Contact"><input style={inp} value={u.contact} onChange={e => { const n = [...newManpower]; n[i].contact = e.target.value; setNewManpower(n); }} /></FieldBox>
+                          <FieldBox label="Skill"><input style={inp} value={u.skill} onChange={e => { const n = [...newManpower]; n[i].skill = e.target.value; setNewManpower(n); }} /></FieldBox>
+                          <FieldBox label="Type">
+                            <select style={inp} value={u.type} onChange={e => { const n = [...newManpower]; n[i].type = e.target.value; setNewManpower(n); }}>
+                              <option>Permanent</option><option>Contract</option><option>Outsourced</option>
+                            </select>
+                          </FieldBox>
+                          <FieldBox label="Shift">
+                            <select style={inp} value={u.shift} onChange={e => { const n = [...newManpower]; n[i].shift = e.target.value; setNewManpower(n); }}>
+                              <option>Morning</option><option>General</option><option>Evening</option><option>Night</option>
+                            </select>
+                          </FieldBox>
+                          <FieldBox label="Status">
+                            <select style={inp} value={u.status} onChange={e => { const n = [...newManpower]; n[i].status = e.target.value; setNewManpower(n); }}>
+                              <option>Active</option><option>On Leave</option><option>Inactive</option>
+                            </select>
+                          </FieldBox>
+                          <FieldBox label="Attendance">
+                            <select style={inp} value={u.attendance} onChange={e => { const n = [...newManpower]; n[i].attendance = e.target.value; setNewManpower(n); }}>
+                              <option>Present</option><option>Absent</option><option>On Leave</option>
+                            </select>
+                          </FieldBox>
+                          <FieldBox label="Assigned Area"><input style={inp} value={u.assignedArea} onChange={e => { const n = [...newManpower]; n[i].assignedArea = e.target.value; setNewManpower(n); }} /></FieldBox>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                          <button onClick={() => setNewManpower(newManpower.filter((_, idx) => idx !== i))} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Cancel</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {newManpower.length > 0 && (
+                    <div style={{ marginTop: '16px', textAlign: 'right' }}>
+                      <button style={{ padding: '10px 20px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.3)' }} 
+                        onClick={() => post(`${API}/add-manpower`, newManpower, 'Manpower added!', () => setNewManpower([]))}>
+                        Save New Personnel
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {existingManpower.length > 0 && (
+                  <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                      <h4 style={{ margin: 0, color: '#0f172a' }}>📋 Existing Manpower</h4>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
+                      {existingManpower.map((u, i) => (
+                        <div key={u.id || i} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                            <FieldBox label="Emp ID"><input style={{...inp, background: '#f1f5f9'}} value={u.empId || ''} onChange={e => { const n = [...existingManpower]; n[i].empId = e.target.value; setExistingManpower(n); }} /></FieldBox>
+                            <FieldBox label="Name"><input style={{...inp, background: '#f1f5f9'}} value={u.name || ''} onChange={e => { const n = [...existingManpower]; n[i].name = e.target.value; setExistingManpower(n); }} /></FieldBox>
+                            <FieldBox label="Designation"><input style={{...inp, background: '#f1f5f9'}} value={u.designation || ''} onChange={e => { const n = [...existingManpower]; n[i].designation = e.target.value; setExistingManpower(n); }} /></FieldBox>
+                            <FieldBox label="Contact"><input style={{...inp, background: '#f1f5f9'}} value={u.contact || ''} onChange={e => { const n = [...existingManpower]; n[i].contact = e.target.value; setExistingManpower(n); }} /></FieldBox>
+                            <FieldBox label="Skill"><input style={{...inp, background: '#f1f5f9'}} value={u.skill || ''} onChange={e => { const n = [...existingManpower]; n[i].skill = e.target.value; setExistingManpower(n); }} /></FieldBox>
+                            <FieldBox label="Type">
+                              <select style={{...inp, background: '#f1f5f9'}} value={u.type || ''} onChange={e => { const n = [...existingManpower]; n[i].type = e.target.value; setExistingManpower(n); }}>
+                                <option>Permanent</option><option>Contract</option><option>Outsourced</option>
+                              </select>
+                            </FieldBox>
+                            <FieldBox label="Shift">
+                              <select style={{...inp, background: '#f1f5f9'}} value={u.shift || ''} onChange={e => { const n = [...existingManpower]; n[i].shift = e.target.value; setExistingManpower(n); }}>
+                                <option>Morning</option><option>General</option><option>Evening</option><option>Night</option>
+                              </select>
+                            </FieldBox>
+                            <FieldBox label="Status">
+                              <select style={{...inp, background: '#f1f5f9'}} value={u.status || ''} onChange={e => { const n = [...existingManpower]; n[i].status = e.target.value; setExistingManpower(n); }}>
+                                <option>Active</option><option>On Leave</option><option>Inactive</option>
+                              </select>
+                            </FieldBox>
+                            <FieldBox label="Attendance">
+                              <select style={{...inp, background: '#f1f5f9'}} value={u.attendance || ''} onChange={e => { const n = [...existingManpower]; n[i].attendance = e.target.value; setExistingManpower(n); }}>
+                                <option>Present</option><option>Absent</option><option>On Leave</option>
+                              </select>
+                            </FieldBox>
+                            <FieldBox label="Assigned Area"><input style={{...inp, background: '#f1f5f9'}} value={u.assignedArea || ''} onChange={e => { const n = [...existingManpower]; n[i].assignedArea = e.target.value; setExistingManpower(n); }} /></FieldBox>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                            <button onClick={() => post(`${API}/add-manpower`, [u], 'Personnel updated!')} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
+                            <button onClick={() => handleDelete(`${API}/delete-manpower?id=${u.id}`, 'Personnel')} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove</button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </form>
-              </>
+                )}
+              </div>
             )}
 
             {tab === 'runtime' && (
-              <>
-                <form onSubmit={submitRunTime}>
-                  <div style={sec}>
-                    <h4 style={{ margin: '0 0 14px' }}>⏱️ Log Daily Run Time</h4>
-                    <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.85rem' }}>Record the operational hours for a motor/pump separated by time periods.</p>
-                    <Grid cols={2}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <label style={lbl}>Date *</label>
-                        <input type="date" style={inp} value={runTimeForm.date} onChange={e => setRunTimeForm(f => ({...f, date: e.target.value}))} required />
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <label style={lbl}>Select Motor *</label>
-                        <select style={inp} value={runTimeForm.motorId} onChange={e => setRunTimeForm(f => ({...f, motorId: e.target.value}))} required>
-                          <option value="">Select Motor...</option>
-                          {motors.map(m => <option key={m.id} value={m.motorId}>{m.motorId} - {m.location}</option>)}
-                        </select>
-                      </div>
-                    </Grid>
-                    
-                    <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '20px' }}>
-                      <h5 style={{ margin: '0 0 6px', color: '#0f172a', fontSize: '0.95rem' }}>Shift Run Hours</h5>
-                      <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.8rem' }}>Enter the number of hours the motor ran during each specific shift block.</p>
-                      <Grid cols={4}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'flex-end' }}>
-                          <label style={{...lbl, color: '#ef4444'}}>Morning Peak (6AM-10AM) <br/><span style={{fontSize:'0.65rem', color:'#64748b'}}>Max 4h</span></label>
-                          <input type="number" step="0.5" max="4" min="0" style={inp} value={runTimeForm.s1} onChange={e => setRunTimeForm(f => ({...f, s1: e.target.value}))} placeholder="e.g. 4.0" />
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'flex-end' }}>
-                          <label style={{...lbl, color: '#22c55e'}}>Day Off-Peak (10AM-6PM) <br/><span style={{fontSize:'0.65rem', color:'#64748b'}}>Max 8h</span></label>
-                          <input type="number" step="0.5" max="8" min="0" style={inp} value={runTimeForm.s2} onChange={e => setRunTimeForm(f => ({...f, s2: e.target.value}))} placeholder="e.g. 8.0" />
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'flex-end' }}>
-                          <label style={{...lbl, color: '#ef4444'}}>Evening Peak (6PM-10PM) <br/><span style={{fontSize:'0.65rem', color:'#64748b'}}>Max 4h</span></label>
-                          <input type="number" step="0.5" max="4" min="0" style={inp} value={runTimeForm.s3} onChange={e => setRunTimeForm(f => ({...f, s3: e.target.value}))} placeholder="e.g. 4.0" />
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'flex-end' }}>
-                          <label style={{...lbl, color: '#1d4ed8'}}>Night Time (10PM-6AM) <br/><span style={{fontSize:'0.65rem', color:'#64748b'}}>Max 8h</span></label>
-                          <input type="number" step="0.5" max="8" min="0" style={inp} value={runTimeForm.s4} onChange={e => setRunTimeForm(f => ({...f, s4: e.target.value}))} placeholder="e.g. 8.0" />
-                        </div>
-                      </Grid>
-                    </div>
-                    <div style={{ marginTop: '16px' }}>
-                      <Btn color="blue" type="submit" disabled={loading}>Save Log</Btn>
+              <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
+                <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                    <h4 style={{ margin: 0, color: '#0f172a' }}>⏱️ Daily Run Time</h4>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                        + Upload Excel
+                        <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setNewRuntimes, { date: new Date().toISOString().split('T')[0], motorId: '', s1: '', s2: '', s3: '', s4: '' }, e)} style={{ display: 'none' }} />
+                      </label>
+                      <button onClick={() => setNewRuntimes([...newRuntimes, { date: new Date().toISOString().split('T')[0], motorId: '', s1: '', s2: '', s3: '', s4: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Runtime Log</button>
                     </div>
                   </div>
-                </form>
-              </>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto' }}>
+                    {newRuntimes.map((u, i) => (
+                      <div key={`newRuntimes-${i}`} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                          <FieldBox label="Date"><input type="date" style={inp} value={u.date} onChange={e => { const n = [...newRuntimes]; n[i].date = e.target.value; setNewRuntimes(n); }} required /></FieldBox>
+                          <FieldBox label="Motor ID">
+                            <select style={inp} value={u.motorId} onChange={e => { const n = [...newRuntimes]; n[i].motorId = e.target.value; setNewRuntimes(n); }} required>
+                              <option value="">Select Motor...</option>
+                              {existingMotors.map(m => <option key={m.id} value={m.motorId}>{m.motorId} - {m.location}</option>)}
+                            </select>
+                          </FieldBox>
+                          <FieldBox label="Morning Peak (6AM-10AM)"><input type="number" step="0.5" max="4" min="0" style={inp} value={u.s1} onChange={e => { const n = [...newRuntimes]; n[i].s1 = e.target.value; setNewRuntimes(n); }} /></FieldBox>
+                          <FieldBox label="Day Off-Peak (10AM-6PM)"><input type="number" step="0.5" max="8" min="0" style={inp} value={u.s2} onChange={e => { const n = [...newRuntimes]; n[i].s2 = e.target.value; setNewRuntimes(n); }} /></FieldBox>
+                          <FieldBox label="Evening Peak (6PM-10PM)"><input type="number" step="0.5" max="4" min="0" style={inp} value={u.s3} onChange={e => { const n = [...newRuntimes]; n[i].s3 = e.target.value; setNewRuntimes(n); }} /></FieldBox>
+                          <FieldBox label="Night Time (10PM-6AM)"><input type="number" step="0.5" max="8" min="0" style={inp} value={u.s4} onChange={e => { const n = [...newRuntimes]; n[i].s4 = e.target.value; setNewRuntimes(n); }} /></FieldBox>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                          <button onClick={() => setNewRuntimes(newRuntimes.filter((_, idx) => idx !== i))} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Cancel</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {newRuntimes.length > 0 && (
+                    <div style={{ marginTop: '16px', textAlign: 'right' }}>
+                      <button style={{ padding: '10px 20px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.3)' }} 
+                        onClick={() => {
+                          const payload = newRuntimes.map(u => ({
+                            ...u,
+                            peakRun: ((parseFloat(u.s1) || 0) + (parseFloat(u.s3) || 0)).toString(),
+                            offPeakRun: (parseFloat(u.s2) || 0).toString(),
+                            nightRun: (parseFloat(u.s4) || 0).toString()
+                          }));
+                          post(`${API}/add-runtime`, payload, 'Runtimes added!', () => setNewRuntimes([]));
+                        }}>
+                        Save New Runtimes
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {existingRuntimes.length > 0 && (
+                  <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                      <h4 style={{ margin: 0, color: '#0f172a' }}>📋 Existing Runtimes</h4>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
+                      {existingRuntimes.map((u, i) => (
+                        <div key={u.id || i} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                            <FieldBox label="Date"><input type="date" style={{...inp, background: '#f1f5f9'}} value={u.date || ''} onChange={e => { const n = [...existingRuntimes]; n[i].date = e.target.value; setExistingRuntimes(n); }} /></FieldBox>
+                            <FieldBox label="Motor ID">
+                              <select style={{...inp, background: '#f1f5f9'}} value={u.motorId || ''} onChange={e => { const n = [...existingRuntimes]; n[i].motorId = e.target.value; setExistingRuntimes(n); }}>
+                                <option value="">Select...</option>
+                                {existingMotors.map(m => <option key={m.id} value={m.motorId}>{m.motorId} - {m.location}</option>)}
+                              </select>
+                            </FieldBox>
+                            <FieldBox label="Morning Peak (6AM-10AM)"><input type="number" style={{...inp, background: '#f1f5f9'}} value={u.s1 || ''} onChange={e => { const n = [...existingRuntimes]; n[i].s1 = e.target.value; setExistingRuntimes(n); }} /></FieldBox>
+                            <FieldBox label="Day Off-Peak (10AM-6PM)"><input type="number" style={{...inp, background: '#f1f5f9'}} value={u.s2 || ''} onChange={e => { const n = [...existingRuntimes]; n[i].s2 = e.target.value; setExistingRuntimes(n); }} /></FieldBox>
+                            <FieldBox label="Evening Peak (6PM-10PM)"><input type="number" style={{...inp, background: '#f1f5f9'}} value={u.s3 || ''} onChange={e => { const n = [...existingRuntimes]; n[i].s3 = e.target.value; setExistingRuntimes(n); }} /></FieldBox>
+                            <FieldBox label="Night Time (10PM-6AM)"><input type="number" style={{...inp, background: '#f1f5f9'}} value={u.s4 || ''} onChange={e => { const n = [...existingRuntimes]; n[i].s4 = e.target.value; setExistingRuntimes(n); }} /></FieldBox>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                            <button onClick={() => {
+                              const payload = {
+                                ...u,
+                                peakRun: ((parseFloat(u.s1) || 0) + (parseFloat(u.s3) || 0)).toString(),
+                                offPeakRun: (parseFloat(u.s2) || 0).toString(),
+                                nightRun: (parseFloat(u.s4) || 0).toString()
+                              };
+                              post(`${API}/add-runtime`, [payload], 'Runtime updated!');
+                            }} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
+            {tab === 'riverIntake' && (
+              <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
+                <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                    <h4 style={{ margin: 0, color: '#0f172a' }}>🌊 River Intake Data Entry</h4>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                        + Upload Excel
+                        <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setNewRiverIntakes, { date: '', intake: '', remarks: '' }, e)} style={{ display: 'none' }} />
+                      </label>
+                      <button onClick={() => setNewRiverIntakes([...newRiverIntakes, { date: new Date().toISOString().slice(0, 10).split('-').reverse().join('-').slice(0, 5) + '-' + new Date().toISOString().slice(0, 4), intake: '', remarks: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Intake Log</button>
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto' }}>
+                    {newRiverIntakes.map((u, i) => (
+                      <div key={`newRiverIntakes-${i}`} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                          <FieldBox label="Date (DD-MM)"><input style={inp} value={u.date} onChange={e => { const n = [...newRiverIntakes]; n[i].date = e.target.value; setNewRiverIntakes(n); }} placeholder="e.g. 15-06" required /></FieldBox>
+                          <FieldBox label="Intake Volume (KL)"><input type="number" style={inp} value={u.intake} onChange={e => { const n = [...newRiverIntakes]; n[i].intake = e.target.value; setNewRiverIntakes(n); }} placeholder="e.g. 150" required /></FieldBox>
+                          <FieldBox label="Remarks"><input style={inp} value={u.remarks || ''} onChange={e => { const n = [...newRiverIntakes]; n[i].remarks = e.target.value; setNewRiverIntakes(n); }} placeholder="e.g. Normal" /></FieldBox>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                          <button onClick={() => setNewRiverIntakes(newRiverIntakes.filter((_, idx) => idx !== i))} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Cancel</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {newRiverIntakes.length > 0 && (
+                    <div style={{ marginTop: '16px', textAlign: 'right' }}>
+                      <button style={{ padding: '10px 20px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.3)' }} 
+                        onClick={() => {
+                          const payload = newRiverIntakes.map(u => ({ ...u, intake: parseFloat(u.intake) || 0 }));
+                          post(`${API}/add-river-intake`, payload, 'River Intake logs added!', () => setNewRiverIntakes([]));
+                        }}>
+                        Save New Logs
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {existingRiverIntakes.length > 0 && (
+                  <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                      <h4 style={{ margin: 0, color: '#0f172a' }}>📋 Existing River Intake Logs</h4>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
+                      {existingRiverIntakes.map((u, i) => (
+                        <div key={u.id || i} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                            <FieldBox label="Date (DD-MM)"><input style={{...inp, background: '#f1f5f9'}} value={u.date || ''} onChange={e => { const n = [...existingRiverIntakes]; n[i].date = e.target.value; setExistingRiverIntakes(n); }} /></FieldBox>
+                            <FieldBox label="Intake Volume (KL)"><input type="number" style={{...inp, background: '#f1f5f9'}} value={u.intake || ''} onChange={e => { const n = [...existingRiverIntakes]; n[i].intake = parseFloat(e.target.value) || 0; setExistingRiverIntakes(n); }} /></FieldBox>
+                            <FieldBox label="Remarks"><input style={{...inp, background: '#f1f5f9'}} value={u.remarks || ''} onChange={e => { const n = [...existingRiverIntakes]; n[i].remarks = e.target.value; setExistingRiverIntakes(n); }} /></FieldBox>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                            <button onClick={() => post(`${API}/add-river-intake`, [u], 'River Intake log updated!')} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
          </>
       )}
     </div>

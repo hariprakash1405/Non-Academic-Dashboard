@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   BarChart,
   Bar,
@@ -69,6 +69,7 @@ export default function HostelsDetail({ currentUser }) {
   const [submittedValues, setSubmittedValues] = useState({});
   const [backendData, setBackendData] = useState(null);
   const [dashboardGraphBlock, setDashboardGraphBlock] = React.useState('all');
+  const [dashboardGraphMonth, setDashboardGraphMonth] = React.useState('all');
   const [filterBlock, setFilterBlock] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -94,6 +95,10 @@ export default function HostelsDetail({ currentUser }) {
   const [showAddBlockModal, setShowAddBlockModal] = useState(false);
   const [rosterFilter, setRosterFilter] = useState('none'); // 'none', 'all', 'warden', 'support'
   const [showRoster, setShowRoster] = useState(false);
+  const [viewingRosterForBlock, setViewingRosterForBlock] = useState(null);
+  const [viewingAbsentListForBlock, setViewingAbsentListForBlock] = useState(null);
+  const [viewingAbsentListForAll, setViewingAbsentListForAll] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState(null);
   const [newBlockForm, setNewBlockForm] = useState({
     name: '',
     beds: 100,
@@ -156,7 +161,17 @@ export default function HostelsDetail({ currentUser }) {
     fetchBackend();
     loadData();
     window.addEventListener('unit-form-updated', loadData);
-    return () => window.removeEventListener('unit-form-updated', loadData);
+    
+    const openRaiseModal = () => {
+      setShowComplaints(true);
+      setShowRaiseModal(true);
+    };
+    window.addEventListener('open-raise-complaint-modal', openRaiseModal);
+
+    return () => {
+      window.removeEventListener('unit-form-updated', loadData);
+      window.removeEventListener('open-raise-complaint-modal', openRaiseModal);
+    };
   }, []);
 
   const isAll = activeTab === 'all';
@@ -167,6 +182,7 @@ export default function HostelsDetail({ currentUser }) {
 
   const totalBeds = blocks.reduce((sum, b) => sum + b.beds, 0);
   let totalOccupied = blocks.reduce((sum, b) => sum + b.occupied, 0);
+  const totalAbsentUnexcused = blocks.reduce((sum, b) => sum + (b.attendanceUnexcused || 0), 0);
 
   // Additional aggregate statistics for infrastructure and facilities
   const totalRooms = blocks.reduce((sum, b) => sum + (b.totalRooms || 0), 0);
@@ -322,6 +338,23 @@ export default function HostelsDetail({ currentUser }) {
 
   const trendData = trendType === 'day' ? dayTrendData : monthTrendData;
 
+  const availableUsageMonths = useMemo(() => {
+    const months = new Set();
+    if (backendData?.dailyUsage) {
+      Object.values(backendData.dailyUsage).forEach(usages => {
+        usages.forEach(u => {
+          if (u.date) {
+            const parts = u.date.split(' ');
+            if (parts.length > 1) {
+              months.add(parts.slice(1).join(' '));
+            }
+          }
+        });
+      });
+    }
+    return Array.from(months).sort((a, b) => new Date(`1 ${b}`) - new Date(`1 ${a}`));
+  }, [backendData]);
+
   const getDailyData = () => {
     let data = [];
     const targetBlock = selectedBlock || (dashboardGraphBlock !== 'all' ? dashboardGraphBlock : null);
@@ -330,6 +363,10 @@ export default function HostelsDetail({ currentUser }) {
       const rawData = backendData?.dailyUsage?.[targetBlock] || [];
       // Deep copy to avoid mutating original state
       data = rawData.map(item => ({ ...item }));
+
+      if (dashboardGraphMonth !== 'all') {
+        data = data.filter(d => d.date && d.date.includes(dashboardGraphMonth));
+      }
 
       // Merge block-specific drafts
       const draftWater = submittedValues[`${targetBlock}_water`];
@@ -350,6 +387,8 @@ export default function HostelsDetail({ currentUser }) {
           if (!isAll && bGender !== activeTab) return;
 
           usageArr.forEach(d => {
+            if (dashboardGraphMonth !== 'all' && (!d.date || !d.date.includes(dashboardGraphMonth))) return;
+
             if (!aggregated[d.date]) aggregated[d.date] = { date: d.date, water: 0, power: 0 };
             
             let waterVal = d.water;
@@ -384,127 +423,23 @@ export default function HostelsDetail({ currentUser }) {
     setSelectedBlock(blockName);
   };
 
-  const renderDashboard = () => (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <h2 style={{ margin: 0, color: '#0f172a' }}>Hostels Management</h2>
-
-        </div>
-        <div className="tab-container-responsive" style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '12px' }}>
-          {['boys', 'girls', 'all'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => {
-                setActiveTab(tab);
-                setDashboardGraphBlock('all');
-                setFilterBlock('all');
-                setFilterCategory('all');
-                setFilterStatus('all');
-                setFilterDate('all');
-              }}
-              style={{
-                padding: '8px 24px',
-                border: 'none',
-                borderRadius: '10px',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-                fontWeight: 700,
-                textTransform: 'capitalize',
-                background: activeTab === tab ? '#fff' : 'transparent',
-                color: activeTab === tab ? '#1e293b' : '#64748b',
-                boxShadow: activeTab === tab ? '0 2px 8px rgba(0,0,0,0.05)' : 'none',
-                transition: 'all 0.2s'
-              }}
+  const renderDashboard = () => {
+    if (showComplaints) {
+      return (
+        <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
+            <button 
+              onClick={() => setShowComplaints(false)}
+              style={{ background: '#f1f5f9', border: 'none', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569' }}
             >
-              {tab === 'all' ? 'All Units' : `${tab} Hostel`}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
             </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="detail-kpi-row">
-        <div className="detail-kpi-card" style={{ borderLeft: `4px solid ${activeTab === 'boys' ? '#1976d2' : '#d81b60'}` }}>
-          <div className="kpi-label">Current Occupancy</div>
-          <div className="kpi-value">{totalOccupied}</div>
-          <div className="kpi-label">{totalBeds} Total Beds</div>
-        </div>
-        <div className="detail-kpi-card" style={{ borderLeft: '4px solid #0ea5e9' }}>
-          <div className="kpi-label">Average Water Usage</div>
-          <div className="kpi-value">{avgWater.toFixed(2)} <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#64748b' }}>KL/unit</span></div>
-          <div className="kpi-label">Total: {totalWaterToday.toFixed(1)} KL across {blocks.length} blocks</div>
-        </div>
-        <div className="detail-kpi-card" style={{ borderLeft: '4px solid #f59e0b' }}>
-          <div className="kpi-label">Average Power Usage</div>
-          <div className="kpi-value">{avgPower.toFixed(2)} <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#64748b' }}>kWh/unit</span></div>
-          <div className="kpi-label">Total: {totalPowerToday.toFixed(1)} kWh across {blocks.length} blocks</div>
-        </div>
-        <div
-          className="detail-kpi-card"
-          onClick={() => setShowComplaints(!showComplaints)}
-          style={{ cursor: 'pointer', border: showComplaints ? '2px solid #6366f1' : '1px solid #e2e8f0' }}
-        >
-          <div className="kpi-label">Maint. Complaints</div>
-          <div className="kpi-value">{totalAllComplaints}</div>
-          <div className="kpi-label">{ongoingAll} Ongoing • TAT: {avgTatString}</div>
-        </div>
-      </div>
-
-      <div style={{ background: '#fff', borderRadius: '20px', border: '1px solid #e2e8f0', padding: '28px', marginBottom: '36px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)' }}>
-        <h3 style={{ margin: '0 0 24px 0', color: '#1e293b', fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          🏢 Infrastructure & Facilities Overview <span style={{fontSize: '0.85rem', color: '#64748b', fontWeight: 600, background: '#f1f5f9', padding: '4px 12px', borderRadius: '20px', marginLeft: '8px'}}>{activeTab === 'all' ? 'All Units' : `${activeTab} Hostel`}</span>
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '20px' }}>
-          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Rooms</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalRooms}</div>
-          </div>
-          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Beds</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalBeds}</div>
-          </div>
-          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Wi-Fi Access Points</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalWifiCount}</div>
-          </div>
-          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>RO / Water Points</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalRoCount}</div>
-          </div>
-          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Bathrooms</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalBathrooms}</div>
-          </div>
-          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Toilets</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalToilets}</div>
-          </div>
-          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>CCTV Cameras</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalCCTV}</div>
-          </div>
-          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Wardens</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalWardens}</div>
-          </div>
-          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Support Staff</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalSupportStaff}</div>
-          </div>
-        </div>
-      </div>
-
-      {showComplaints && (
-        <div style={{ background: '#fff', borderRadius: '20px', border: '1px solid #e2e8f0', padding: '28px', marginBottom: '36px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', animation: 'fadeIn 0.4s ease' }}>
-          
-          {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: 16 }}>
             <div>
-              <h3 style={{ margin: 0, color: '#1e293b', fontSize: '1.25rem', fontWeight: 800 }}>🔧 Maintenance Diagnostics & Analytics</h3>
-              <p style={{ margin: '4px 0 0 0', color: '#64748b', fontSize: '0.8rem' }}>Real-time sector breakdown, status summaries, and operational TAT diagnostics</p>
+              <h2 style={{ margin: 0, color: '#0f172a' }}>🔧 Maintenance Diagnostics & Analytics</h2>
+              <p style={{ margin: 0, color: '#64748b' }}>Real-time sector breakdown, status summaries, and operational TAT diagnostics</p>
             </div>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              {isHostelUnitHead && (
+            {isHostelUnitHead && (
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: '12px' }}>
                 <button 
                   id="btn-raise-complaint"
                   onClick={() => {
@@ -530,20 +465,12 @@ export default function HostelsDetail({ currentUser }) {
                   onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-1px)'}
                   onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
                 >
-                  🚨 Click Here to Raise Complaint
+                  ?? Raise Complaint
                 </button>
-              )}
-              <button 
-                onClick={() => setShowComplaints(false)} 
-                style={{ background: '#f1f5f9', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, color: '#475569', transition: 'all 0.2s', fontSize: '0.85rem' }}
-                onMouseEnter={e => e.currentTarget.style.background = '#e2e8f0'}
-                onMouseLeave={e => e.currentTarget.style.background = '#f1f5f9'}
-              >
-                Close Panel
-              </button>
-            </div>
+              </div>
+            )}
           </div>
-
+          <div style={{ background: '#fff', borderRadius: '20px', border: '1px solid #e2e8f0', padding: '28px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)' }}>
           {/* Filtering Controls */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px', background: '#f8fafc', padding: '16px', borderRadius: '12px', marginBottom: '24px', border: '1px solid #f1f5f9' }}>
             <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -820,8 +747,138 @@ export default function HostelsDetail({ currentUser }) {
             </div>
           </div>
 
+
+          </div>
         </div>
-      )}
+      );
+    }
+    
+    return (
+
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <h2 style={{ margin: 0, color: '#0f172a' }}>Hostels Management</h2>
+
+        </div>
+        <div className="tab-container-responsive" style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '12px' }}>
+          {['boys', 'girls', 'all'].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => {
+                setActiveTab(tab);
+                setDashboardGraphBlock('all');
+                setFilterBlock('all');
+                setFilterCategory('all');
+                setFilterStatus('all');
+                setFilterDate('all');
+              }}
+              style={{
+                padding: '8px 24px',
+                border: 'none',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                textTransform: 'capitalize',
+                background: activeTab === tab ? '#fff' : 'transparent',
+                color: activeTab === tab ? '#1e293b' : '#64748b',
+                boxShadow: activeTab === tab ? '0 2px 8px rgba(0,0,0,0.05)' : 'none',
+                transition: 'all 0.2s'
+              }}
+            >
+              {tab === 'all' ? 'All Units' : `${tab} Hostel`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="detail-kpi-row">
+        <div className="detail-kpi-card" style={{ borderLeft: `4px solid ${activeTab === 'boys' ? '#1976d2' : '#d81b60'}` }}>
+          <div className="kpi-label">Current Occupancy</div>
+          <div className="kpi-value">{totalOccupied}</div>
+          <div className="kpi-label">{totalBeds} Total Beds</div>
+        </div>
+        <div className="detail-kpi-card" style={{ borderLeft: '4px solid #0ea5e9' }}>
+          <div className="kpi-label">Average Water Usage</div>
+          <div className="kpi-value">{avgWater.toFixed(2)} <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#64748b' }}>KL/unit</span></div>
+          <div className="kpi-label">Total: {totalWaterToday.toFixed(1)} KL across {blocks.length} blocks</div>
+        </div>
+        <div className="detail-kpi-card" style={{ borderLeft: '4px solid #f59e0b' }}>
+          <div className="kpi-label">Average Power Usage</div>
+          <div className="kpi-value">{avgPower.toFixed(2)} <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#64748b' }}>kWh/unit</span></div>
+          <div className="kpi-label">Total: {totalPowerToday.toFixed(1)} kWh across {blocks.length} blocks</div>
+        </div>
+        <div
+          className="detail-kpi-card"
+          onClick={() => setShowComplaints(true)}
+          style={{ cursor: 'pointer', border: '1px solid #e2e8f0', transition: 'all 0.2s' }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = '#6366f1'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = '#e2e8f0'}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="kpi-label" style={{ marginBottom: 0 }}>Maint. Complaints</div>
+            <span style={{ fontSize: '0.75rem', color: '#6366f1', fontWeight: 600 }}>View All ➔</span>
+          </div>
+          <div className="kpi-value">{totalAllComplaints}</div>
+          <div className="kpi-label">{ongoingAll} Ongoing • TAT: {avgTatString}</div>
+        </div>
+        <div 
+          className="detail-kpi-card" 
+          onClick={() => setViewingAbsentListForAll(true)}
+          style={{ cursor: 'pointer', borderLeft: '4px solid #ef4444', transition: 'all 0.2s' }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = '#dc2626'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = '#e2e8f0'}
+        >
+          <div className="kpi-label">Absent (Unexcused)</div>
+          <div className="kpi-value">{totalAbsentUnexcused}</div>
+          <div className="kpi-label">Across {blocks.length} blocks</div>
+        </div>
+      </div>
+
+      <div style={{ background: '#fff', borderRadius: '20px', border: '1px solid #e2e8f0', padding: '28px', marginBottom: '36px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)' }}>
+        <h3 style={{ margin: '0 0 24px 0', color: '#1e293b', fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          🏢 Infrastructure & Facilities Overview <span style={{fontSize: '0.85rem', color: '#64748b', fontWeight: 600, background: '#f1f5f9', padding: '4px 12px', borderRadius: '20px', marginLeft: '8px'}}>{activeTab === 'all' ? 'All Units' : `${activeTab} Hostel`}</span>
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '20px' }}>
+          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Rooms</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalRooms}</div>
+          </div>
+          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Beds</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalBeds}</div>
+          </div>
+          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Wi-Fi Access Points</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalWifiCount}</div>
+          </div>
+          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>RO / Water Points</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalRoCount}</div>
+          </div>
+          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Bathrooms</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalBathrooms}</div>
+          </div>
+          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Toilets</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalToilets}</div>
+          </div>
+          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>CCTV Cameras</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalCCTV}</div>
+          </div>
+          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Wardens</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalWardens}</div>
+          </div>
+          <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Support Staff</div>
+            <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#334155' }}>{totalSupportStaff}</div>
+          </div>
+        </div>
+      </div>
 
 
       <div style={{ marginTop: 32 }}>
@@ -895,18 +952,12 @@ export default function HostelsDetail({ currentUser }) {
                 <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#334155', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   🕒 Evening Biometric Attendance
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                  <div style={{ padding: '6px', background: '#f0fdf4', borderRadius: '4px', textAlign: 'center', border: '1px solid #bbf7d0' }}>
-                    <div style={{ fontSize: '0.6rem', color: '#166534', textTransform: 'uppercase', fontWeight: 800 }}>Present</div>
-                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#15803d' }}>{Math.round(block.occupied * 0.92)}</div>
-                  </div>
-                  <div style={{ padding: '6px', background: '#fffbeb', borderRadius: '4px', textAlign: 'center', border: '1px solid #fde68a' }} title="Already got approval from mentor and warden">
-                    <div style={{ fontSize: '0.6rem', color: '#b45309', textTransform: 'uppercase', fontWeight: 800 }}>Permitted</div>
-                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#d97706' }}>{Math.round(block.occupied * 0.05)}</div>
-                  </div>
-                  <div style={{ padding: '6px', background: '#fef2f2', borderRadius: '4px', textAlign: 'center', border: '1px solid #fecaca' }} title="Not got permission from warden and mentors">
-                    <div style={{ fontSize: '0.6rem', color: '#991b1b', textTransform: 'uppercase', fontWeight: 800 }}>Unexcused</div>
-                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#dc2626' }}>{block.occupied - Math.round(block.occupied * 0.92) - Math.round(block.occupied * 0.05)}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+                  <div 
+                    style={{ padding: '6px', background: '#fef2f2', borderRadius: '4px', textAlign: 'center', border: '1px solid #fecaca' }} 
+                  >
+                    <div style={{ fontSize: '0.6rem', color: '#991b1b', textTransform: 'uppercase', fontWeight: 800 }}>Absent (Unexcused)</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#dc2626' }}>{block.attendanceUnexcused || 0}</div>
                   </div>
                 </div>
               </div>
@@ -980,6 +1031,26 @@ export default function HostelsDetail({ currentUser }) {
               <option key={b.name} value={b.name}>{b.name}</option>
             ))}
           </select>
+          <select 
+            value={dashboardGraphMonth} 
+            onChange={(e) => setDashboardGraphMonth(e.target.value)}
+            style={{ 
+              padding: '6px 12px', 
+              borderRadius: '8px', 
+              border: '1px solid #cbd5e1', 
+              fontSize: '0.85rem', 
+              fontWeight: '600',
+              background: '#fff',
+              color: '#334155',
+              cursor: 'pointer',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}
+          >
+            <option value="all">All Time</option>
+            {availableUsageMonths.map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -1051,11 +1122,139 @@ export default function HostelsDetail({ currentUser }) {
         </div>
       </div>
     </>
-  );
+    );
+  };
 
   const renderBlockDetail = () => {
+    if (viewingAbsentListForBlock || viewingAbsentListForAll) {
+      let absentList = [];
+      let title = '';
+      let subtitle = '';
+
+      if (viewingAbsentListForAll) {
+        title = 'Absent (Unexcused) Students - All Visible Blocks';
+        subtitle = `Across ${blocks.length} blocks`;
+        blocks.forEach(b => {
+          if (b.absentList && b.absentList.length > 0) {
+            absentList.push(...b.absentList.map(r => ({ ...r, blockName: b.name })));
+          }
+        });
+      } else {
+        const block = blocks.find(b => b.name === viewingAbsentListForBlock);
+        title = `${viewingAbsentListForBlock} - Absent (Unexcused) Students`;
+        subtitle = `Showing unexcused absences for this block`;
+        if (block && block.absentList && block.absentList.length > 0) {
+          absentList = block.absentList.map(r => ({ ...r, blockName: block.name }));
+        }
+      }
+
+      return (
+        <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
+            <button 
+              onClick={() => {
+                setViewingAbsentListForBlock(null);
+                setViewingAbsentListForAll(false);
+              }}
+              style={{ background: '#f1f5f9', border: 'none', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569' }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+            </button>
+            <div>
+              <h2 style={{ margin: 0, color: '#0f172a' }}>{title}</h2>
+              <p style={{ margin: 0, color: '#64748b' }}>{subtitle}</p>
+            </div>
+          </div>
+
+          <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+            {absentList.length === 0 ? (
+              <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>No absent (unexcused) students found.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    <th style={{ padding: '16px 24px', color: '#64748b', fontWeight: 700 }}>Name</th>
+                    <th style={{ padding: '16px 24px', color: '#64748b', fontWeight: 700 }}>Roll No</th>
+                    <th style={{ padding: '16px 24px', color: '#64748b', fontWeight: 700 }}>Room</th>
+                    {viewingAbsentListForAll && <th style={{ padding: '16px 24px', color: '#64748b', fontWeight: 700 }}>Block</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {absentList.map((res, idx) => (
+                    <tr 
+                      key={idx} 
+                      style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.2s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <td style={{ padding: '16px 24px', fontWeight: 600, color: '#334155' }}>{res.name || '-'}</td>
+                      <td style={{ padding: '16px 24px', color: '#64748b' }}>{res.rollNo || '-'}</td>
+                      <td style={{ padding: '16px 24px', color: '#64748b' }}>{res.roomNo || '-'}</td>
+                      {viewingAbsentListForAll && <td style={{ padding: '16px 24px', color: '#64748b' }}>{res.blockName}</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (viewingRosterForBlock) {
+      const block = blocks.find(b => b.name === viewingRosterForBlock);
+      return (
+        <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '32px' }}>
+            <button 
+              onClick={() => setViewingRosterForBlock(null)}
+              style={{ background: '#f1f5f9', border: 'none', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569' }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+            </button>
+            <div>
+              <h2 style={{ margin: 0, color: '#0f172a' }}>{viewingRosterForBlock} - Resident Roster</h2>
+              <p style={{ margin: 0, color: '#64748b' }}>Complete list of registered students in this hostel block</p>
+            </div>
+          </div>
+
+          <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                  <th style={{ padding: '16px 24px', color: '#64748b', fontWeight: 700 }}>Name</th>
+                  <th style={{ padding: '16px 24px', color: '#64748b', fontWeight: 700 }}>Roll No</th>
+                  <th style={{ padding: '16px 24px', color: '#64748b', fontWeight: 700 }}>Room</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(block?.residentList || []).map((res, idx) => (
+                  <tr 
+                    key={idx} 
+                    style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.2s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <td style={{ padding: '16px 24px', fontWeight: 700, color: '#1e293b' }}>{res.name}</td>
+                    <td style={{ padding: '16px 24px', color: '#475569' }}>{res.rollNo}</td>
+                    <td style={{ padding: '16px 24px', color: '#3b82f6', fontWeight: 800 }}>{res.roomNo}</td>
+                  </tr>
+                ))}
+                {(!block?.residentList || block?.residentList.length === 0) && (
+                  <tr><td colSpan="3" style={{ padding: '32px', textAlign: 'center', color: '#94a3b8' }}>No residents registered in this block.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
     const block = blocks.find(b => b.name === selectedBlock);
-    const blockData = backendData?.dailyUsage?.[selectedBlock] || [];
+    let blockData = backendData?.dailyUsage?.[selectedBlock] || [];
+    if (dashboardGraphMonth !== 'all') {
+      blockData = blockData.filter(d => d.date && d.date.includes(dashboardGraphMonth));
+    }
 
     // Specific block complaints from backend
     const blockComplaints = backendData?.maintenance?.filter(c => c.block === selectedBlock) || block?.complaints || [];
@@ -1178,12 +1377,14 @@ export default function HostelsDetail({ currentUser }) {
           </div>
 
           <div 
-            onClick={() => setShowRoster(!showRoster)}
-            style={{ background: '#fff', padding: '24px', borderRadius: '16px', border: showRoster ? '2px solid #3b82f6' : '1px solid #e2e8f0', cursor: 'pointer', transition: 'all 0.2s' }}
+            onClick={() => setViewingRosterForBlock(selectedBlock)}
+            style={{ background: '#fff', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', cursor: 'pointer', transition: 'all 0.2s' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = '#3b82f6'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = '#e2e8f0'}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <h4 style={{ margin: 0, color: '#64748b', fontSize: '0.8rem', textTransform: 'uppercase' }}>Building Occupancy</h4>
-              <span style={{ fontSize: '0.75rem', color: '#3b82f6', fontWeight: 600 }}>{showRoster ? 'Hide Roster ▲' : 'View Roster ▼'}</span>
+              <span style={{ fontSize: '0.75rem', color: '#3b82f6', fontWeight: 600 }}>View Roster ➔</span>
             </div>
             <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#1e293b' }}>
               {blocks.find(b => b.name === selectedBlock)?.occupied}
@@ -1191,6 +1392,24 @@ export default function HostelsDetail({ currentUser }) {
             </div>
             <div style={{ height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden', marginTop: 12 }}>
               <div style={{ height: '100%', width: `${(blocks.find(b => b.name === selectedBlock)?.occupied / blocks.find(b => b.name === selectedBlock)?.beds) * 100}%`, background: '#3b82f6' }} />
+            </div>
+          </div>
+
+          <div 
+            onClick={() => { if (block?.attendanceUnexcused > 0) setViewingAbsentListForBlock(block.name); }}
+            style={{ background: '#fff', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', cursor: block?.attendanceUnexcused > 0 ? 'pointer' : 'default', transition: 'all 0.2s' }}
+            onMouseEnter={e => { if (block?.attendanceUnexcused > 0) { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)'; } }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; }}
+          >
+            <h4 style={{ margin: '0 0 16px 0', color: '#64748b', fontSize: '0.8rem', textTransform: 'uppercase' }}>Attendance Status</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#ef4444', fontWeight: 700, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }}></div>
+                  Absent (Unexcused)
+                </span>
+                <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.1rem' }}>{block?.attendanceUnexcused || 0}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1247,6 +1466,65 @@ export default function HostelsDetail({ currentUser }) {
           )}
         </div>
 
+        {block?.floorDetails && block.floorDetails.length > 0 && (
+          <div style={{ background: '#fff', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '32px' }}>
+            <h4 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>Floor-wise Room Details</h4>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', borderBottom: '2px solid #e2e8f0', color: '#64748b' }}>
+                    <th style={{ padding: '12px 8px' }}>Floor</th>
+                    <th style={{ padding: '12px 8px' }}>Total Rms</th>
+                    <th style={{ padding: '12px 8px' }}>Student Rms</th>
+                    <th style={{ padding: '12px 8px' }}>Warden Rms</th>
+                    <th style={{ padding: '12px 8px' }}>Suprv. Rms</th>
+                    <th style={{ padding: '12px 8px' }}>Rest Rms</th>
+                    <th style={{ padding: '12px 8px' }}>Room Types</th>
+                    <th style={{ padding: '12px 8px' }}>Total Beds</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.floorDetails.map((f, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px 8px', fontWeight: 600, color: '#334155' }}>{f.floorNumber}</td>
+                      <td style={{ padding: '12px 8px' }}>{f.totalRooms || 0}</td>
+                      <td style={{ padding: '12px 8px' }}>{f.studentRooms || 0}</td>
+                      <td style={{ padding: '12px 8px' }}>{f.wardenRooms || 0}</td>
+                      <td style={{ padding: '12px 8px' }}>{f.supervisorRooms || 0}</td>
+                      <td style={{ padding: '12px 8px' }}>{f.restRooms || 0}</td>
+                      <td style={{ padding: '12px 8px' }}>{f.roomTypes || '-'}</td>
+                      <td style={{ padding: '12px 8px', fontWeight: 600 }}>{f.totalBeds || 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h4 style={{ margin: 0 }}>Resource Consumption Trends</h4>
+          <select 
+            value={dashboardGraphMonth} 
+            onChange={(e) => setDashboardGraphMonth(e.target.value)}
+            style={{ 
+              padding: '6px 12px', 
+              borderRadius: '8px', 
+              border: '1px solid #cbd5e1', 
+              fontSize: '0.85rem', 
+              fontWeight: '600',
+              background: '#fff',
+              color: '#334155',
+              cursor: 'pointer',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}
+          >
+            <option value="all">All Time</option>
+            {availableUsageMonths.map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </div>
         <div className="responsive-grid" style={{ marginBottom: 32 }}>
           <div className="detail-chart-block">
             <h4 style={{ marginBottom: 16 }}>Water Usage Trend (KL)</h4>
@@ -1306,82 +1584,51 @@ export default function HostelsDetail({ currentUser }) {
           </div>
         </div>
 
-        {showRoster && (
-          <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', animation: 'fadeIn 0.3s ease-out' }}>
-            <div style={{ padding: '16px 24px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontWeight: 700 }}>Resident Roster</div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', borderBottom: '1px solid #f1f5f9' }}>
-                    <th style={{ padding: '12px 24px', color: '#64748b' }}>Name</th>
-                    <th style={{ padding: '12px 24px', color: '#64748b' }}>Roll No</th>
-                    <th style={{ padding: '12px 24px', color: '#64748b' }}>Room</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(block?.residentList || []).map((res, idx) => (
-                    <tr key={idx} style={{ borderBottom: '1px solid #f8fafc' }}>
-                      <td style={{ padding: '12px 24px', fontWeight: 600 }}>{res.name}</td>
-                      <td style={{ padding: '12px 24px' }}>{res.rollNo}</td>
-                      <td style={{ padding: '12px 24px', color: '#3b82f6', fontWeight: 700 }}>{res.roomNo}</td>
-                    </tr>
-                  ))}
-                  {(!block?.residentList || block?.residentList.length === 0) && (
-                    <tr><td colSpan="3" style={{ padding: '20px', textAlign: 'center', color: '#94a3b8' }}>No residents registered in this block.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+
       </div>
     );
   };
 
   return (
     <div className="unit-detail-container">
-      {selectedBlock ? renderBlockDetail() : renderDashboard()}
+      {(selectedBlock || viewingAbsentListForAll) ? renderBlockDetail() : renderDashboard()}
 
-      <div style={{ marginTop: 40 }}>
-        <div className="responsive-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
-          <div className="detail-chart-block">
-            <h4>Facility Ratings - May 2024 (0-5)</h4>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={facilityRatings}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="category" tick={{ fontSize: 11 }} />
-                <YAxis domain={[0, 5]} />
-                <Tooltip />
-                <Bar dataKey="score" fill="#8b5cf6" name="Rating" radius={[6, 6, 0, 0]}>
-                  {facilityRatings.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.score < 4 ? '#ef4444' : '#8b5cf6'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-            <p style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'center', marginTop: 12 }}>
-              Red bars indicate sectors below the <b>4.0</b> excellence threshold.
-            </p>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '20px', background: '#f5f3ff', borderRadius: '12px', border: '1px solid #ddd6fe' }}>
-            <h4 style={{ margin: '0 0 12px 0', color: '#5b21b6' }}>Current Performance</h4>
-            <div style={{ fontSize: '0.85rem', color: '#4c1d95', lineHeight: 1.6 }}>
-              Top Sector: <b>Water Supply (4.7)</b><br />
-              Critical: <b>Wi-Fi (3.8)</b> - Needs infrastructure upgrade.<br />
-              Overall Avg: <b>4.36 / 5.0</b>
+      {!viewingRosterForBlock && (
+        <>
+          <div style={{ marginTop: 40 }}>
+            <div className="responsive-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
+              <div className="detail-chart-block">
+                <h4>Facility Ratings - May 2024 (0-5)</h4>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={facilityRatings}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="category" tick={{ fontSize: 11 }} />
+                    <YAxis domain={[0, 5]} />
+                    <Tooltip />
+                    <Bar dataKey="score" fill="#8b5cf6" name="Rating" radius={[6, 6, 0, 0]}>
+                      {facilityRatings.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.score < 4 ? '#ef4444' : '#8b5cf6'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+                <p style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'center', marginTop: 12 }}>
+                  Red bars indicate sectors below the <b>4.0</b> excellence threshold.
+                </p>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '20px', background: '#f5f3ff', borderRadius: '12px', border: '1px solid #ddd6fe' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#5b21b6' }}>Current Performance</h4>
+                <div style={{ fontSize: '0.85rem', color: '#4c1d95', lineHeight: 1.6 }}>
+                  Top Sector: <b>Water Supply (4.7)</b><br />
+                  Critical: <b>Wi-Fi (3.8)</b> - Needs infrastructure upgrade.<br />
+                  Overall Avg: <b>4.36 / 5.0</b>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div style={{ marginTop: 40, background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-        <h4 style={{ margin: '0 0 12px 0', color: '#1e293b' }}>Hostel Cluster Operational Notes</h4>
-        <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: '#475569', lineHeight: 1.6 }}>
-          <li>Water usage is currently within normal bands (avg 45 KL/day for Boys, 40 KL/day for Girls).</li>
-          <li>Occupancy across all {activeTab} blocks is healthy at {Math.round((totalOccupied / totalBeds) * 100)}%.</li>
-          <li>Electrical maintenance scheduled for UG Blocks next weekend (transformer servicing).</li>
-        </ul>
-      </div>
+        </>
+      )}
 
       {showRaiseModal && (
         <div style={{

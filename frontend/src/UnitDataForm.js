@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
 
 function getStorageKey(unitName) {
   return `unit-form:${unitName}`;
@@ -19,6 +20,13 @@ function addDays(date, days) {
   next.setDate(next.getDate() + days);
   return next;
 }
+
+const FieldBox = ({ label, children }) => (
+  <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+    <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</label>
+    {children}
+  </div>
+);
 
 export default function UnitDataForm({ unitName, fields, onClose }) {
   const initialValues = useMemo(() => {
@@ -43,6 +51,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const [currentBlockData, setCurrentBlockData] = useState(null);
   const [dailyUsageMap, setDailyUsageMap] = useState({});
   const [residentSearchQuery, setResidentSearchQuery] = useState('');
+  const [absentSearchQuery, setAbsentSearchQuery] = useState('');
   const [wardenSearchQuery, setWardenSearchQuery] = useState('');
 
   // Mess specific state
@@ -52,18 +61,16 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const [messMenuBlock, setMessMenuBlock] = useState('Boys Hostel');
   const [messMenuSaving, setMessMenuSaving] = useState(false);
 
-  const [messEquip, setMessEquip] = useState({ blockName: 'Boys Hostel', name: '', total: 0, working: 0, damaged: 0, status: 'Working' });
-  const [messStaff, setMessStaff] = useState({ blockName: 'Boys Hostel', name: '', role: '', shift: 'Morning', contact: '' });
+  const [existingMessLogs, setExistingMessLogs] = useState([]);
+
+  const [messEquipments, setMessEquipments] = useState([{ blockName: 'Boys Hostel', name: '', total: 0, working: 0, damaged: 0, status: 'Working' }]);
+  const [existingMessEquipments, setExistingMessEquipments] = useState([]);
+
+  const [messStaffs, setMessStaffs] = useState([{ blockName: 'Boys Hostel', name: '', role: '', shift: 'Morning', contact: '' }]);
+  const [existingMessStaffs, setExistingMessStaffs] = useState([]);
 
   // Derived: true if the currently selected block hasn't been saved yet (no beds data)
   const isNewBlock = !hostelBlocks.some(b => b.name === selectedHostelBlock && b.beds > 0);
-
-  const FieldBox = ({ label, children }) => (
-    <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-      <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</label>
-      {children}
-    </div>
-  );
 
   // ─── Chiller Plant state ──────────────────────────────────────────────────
   const mkSlots = () => ({ s1: '', s2: '', s3: '', s4: '' });
@@ -101,6 +108,83 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const [existingUnitSpecs, setExistingUnitSpecs] = useState([]);
 
   const [existingBreakdowns, setExistingBreakdowns] = useState([]);
+  const [existingOperatingLogs, setExistingOperatingLogs] = useState([]);
+
+  // ─── Power House state ──────────────────────────────────────────────────
+  const [phTab, setPhTab] = useState('static'); 
+  const [phStaticTab, setPhStaticTab] = useState('ebTransformer'); 
+  const mkPhSlots = () => Array.from({length: 24}, (_, i) => ({ hour: `${i.toString().padStart(2, '0')}:00`, value: '' }));
+  const [phDate, setPhDate] = useState(new Date().toISOString().split('T')[0]);
+  const [ebDynamic, setEbDynamic] = useState(mkPhSlots());
+  const [solarDynamic, setSolarDynamic] = useState(mkPhSlots());
+  const [dgDynamic, setDgDynamic] = useState(mkPhSlots());
+  const [dgDailyFuel, setDgDailyFuel] = useState('');
+  const [phSaving, setPhSaving] = useState(false);
+  const [phSavedMsg, setPhSavedMsg] = useState('');
+
+  const [phTransformers, setPhTransformers] = useState([{ svcNum: '', type: 'Permanent HT', load: '', voltage: '11 kV HT / 415 V LT', ratingMake: '', year: '', feeders: '' }]);
+  const [phDGSets, setPhDGSets] = useState([{ ratingMake: '', count: '', year: '', lastService: '', fuelCap: '', status: 'Working' }]);
+  const [phUps, setPhUps] = useState([{ location: '', ratingMake: '', lastAmc: '', nextAmc: '', batteryCap: '', batteryDate: '', status: 'Working' }]);
+  const [phSolarPv, setPhSolarPv] = useState([{ location: '', capacity: '', panels: '', panelWatts: '', inverterRating: '', inverterService: '', type: 'Local Grid usage', cleaningFreq: 'yes', status: 'Working' }]);
+  const [phStaff, setPhStaff] = useState([{ name: '', role: '', shift: 'Morning', attendance: 'Present', contact: '' }]);
+
+  useEffect(() => {
+    if (unitName === 'Power House') {
+      fetch(`http://localhost:8085/api/powerhouse?date=${phDate}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data) {
+            if (data.transformers && data.transformers.length > 0) {
+              setPhTransformers(data.transformers);
+            } else {
+              setPhTransformers([{ svcNum: '', type: 'Permanent HT', load: '', voltage: '11 kV HT / 415 V LT', ratingMake: '', year: '', feeders: '' }]);
+            }
+
+            if (data.dgSets && data.dgSets.length > 0) {
+              setPhDGSets(data.dgSets);
+            } else {
+              setPhDGSets([{ ratingMake: '', count: '', year: '', lastService: '', fuelCap: '', status: 'Working' }]);
+            }
+
+            if (data.ups && data.ups.length > 0) {
+              setPhUps(data.ups);
+            } else {
+              setPhUps([{ location: '', ratingMake: '', lastAmc: '', nextAmc: '', batteryCap: '', batteryDate: '', status: 'Working' }]);
+            }
+
+            if (data.solarPv && data.solarPv.length > 0) {
+              setPhSolarPv(data.solarPv);
+            } else {
+              setPhSolarPv([{ location: '', capacity: '', panels: '', panelWatts: '', inverterRating: '', inverterService: '', type: 'Local Grid usage', cleaningFreq: 'yes', status: 'Working' }]);
+            }
+
+            if (data.staff && data.staff.length > 0) {
+              setPhStaff(data.staff);
+            } else {
+              setPhStaff([{ name: '', role: '', shift: 'Morning', attendance: 'Present', contact: '' }]);
+            }
+
+            const fillSlots = (slots, dataArr) => {
+              const res = [...slots];
+              if (!dataArr) return res;
+              dataArr.forEach(d => {
+                const idx = res.findIndex(s => s.hour === d.hour);
+                if (idx !== -1) {
+                  res[idx] = { ...res[idx], value: d.value, generation: d.generation };
+                }
+              });
+              return res;
+            };
+
+            setEbDynamic(fillSlots(mkPhSlots(), data.ebDynamic));
+            setSolarDynamic(fillSlots(mkPhSlots(), data.solarDynamic));
+            setDgDynamic(fillSlots(mkPhSlots(), data.dgDynamic));
+            setDgDailyFuel(data.dgDailyFuel || '');
+          }
+        })
+        .catch(console.error);
+    }
+  }, [unitName, phDate]);
 
   useEffect(() => {
     fetch('http://localhost:8085/api/chiller/ahu-units')
@@ -151,6 +235,16 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         }
       })
       .catch(console.error);
+
+    fetch('http://localhost:8085/api/chiller/operating-logs')
+      .then(res => res.json())
+      .then(data => { if (data) setExistingOperatingLogs(data); })
+      .catch(console.error);
+
+    fetch('http://localhost:8085/api/mess/data')
+      .then(res => res.json())
+      .then(data => { if (data && data.wasteLogs) setExistingMessLogs(data.wasteLogs); })
+      .catch(console.error);
   }, [chillerSavedMsg]); // Refresh when saved
 
   const [ratePeak, setRatePeak] = useState('');
@@ -162,6 +256,66 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const [condenserWaterOut, setCondenserWaterOut] = useState('');
 
   const fv = (v) => parseFloat(v) || 0;
+
+  useEffect(() => {
+    if (chillerTab === 'dynamic' && existingOperatingLogs.length > 0) {
+      const log = existingOperatingLogs.find(l => l.date === chillerDate);
+      if (log) {
+        setU1({ s1: log.unit1Slot1 || '', s2: log.unit1Slot2 || '', s3: log.unit1Slot3 || '', s4: log.unit1Slot4 || '' });
+        setU2({ s1: log.unit2Slot1 || '', s2: log.unit2Slot2 || '', s3: log.unit2Slot3 || '', s4: log.unit2Slot4 || '' });
+        setU3({ s1: log.unit3Slot1 || '', s2: log.unit3Slot2 || '', s3: log.unit3Slot3 || '', s4: log.unit3Slot4 || '' });
+        setP1({ s1: log.pump1Slot1 || '', s2: log.pump1Slot2 || '', s3: log.pump1Slot3 || '', s4: log.pump1Slot4 || '' });
+        setP2({ s1: log.pump2Slot1 || '', s2: log.pump2Slot2 || '', s3: log.pump2Slot3 || '', s4: log.pump2Slot4 || '' });
+        setP3({ s1: log.pump3Slot1 || '', s2: log.pump3Slot2 || '', s3: log.pump3Slot3 || '', s4: log.pump3Slot4 || '' });
+        setP4({ s1: log.pump4Slot1 || '', s2: log.pump4Slot2 || '', s3: log.pump4Slot3 || '', s4: log.pump4Slot4 || '' });
+        
+        setRatePeak(log.ratePeak || '');
+        setRateOffPeak(log.rateOffPeak || '');
+        setRateNight(log.rateNight || '');
+        setChillerWaterIn(log.chillerWaterIn || '');
+        setChillerWaterOut(log.chillerWaterOut || '');
+        setCondenserWaterIn(log.condenserWaterIn || '');
+        setCondenserWaterOut(log.condenserWaterOut || '');
+      } else {
+        const mkSlots = () => ({ s1: '', s2: '', s3: '', s4: '' });
+        setU1(mkSlots()); setU2(mkSlots()); setU3(mkSlots());
+        setP1(mkSlots()); setP2(mkSlots()); setP3(mkSlots()); setP4(mkSlots());
+        setRatePeak(''); setRateOffPeak(''); setRateNight('');
+        setChillerWaterIn(''); setChillerWaterOut(''); setCondenserWaterIn(''); setCondenserWaterOut('');
+      }
+    }
+  }, [chillerDate, existingOperatingLogs, chillerTab]);
+
+  useEffect(() => {
+    if (unitName === 'Mess' && messTab === 'daily') {
+      const selectedDate = values.date;
+      const selectedBlock = values.blockName || 'Boys Hostel';
+      if (selectedDate && existingMessLogs.length > 0) {
+        const log = existingMessLogs.find(l => l.date && l.date.split('T')[0] === selectedDate && l.blockName === selectedBlock);
+        if (log) {
+          setValues(prev => ({
+            ...prev,
+            breakfast: log.breakfast || '',
+            lunch: log.lunch || '',
+            dinner: log.dinner || '',
+            breakfastCount: log.breakfastCount || '',
+            lunchCount: log.lunchCount || '',
+            dinnerCount: log.dinnerCount || ''
+          }));
+        } else {
+          setValues(prev => ({
+            ...prev,
+            breakfast: '',
+            lunch: '',
+            dinner: '',
+            breakfastCount: '',
+            lunchCount: '',
+            dinnerCount: ''
+          }));
+        }
+      }
+    }
+  }, [values.date, values.blockName, existingMessLogs, unitName, messTab]);
 
   // Auto-calculated totals (mirrors backend logic)
   const cPeak    = fv(u1.s1) + fv(u2.s1) + fv(u3.s1);
@@ -198,6 +352,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         setChillerSavedMsg('✓ Data saved successfully to the database!');
         setAhuUnits([{ block: '', floor: '', loc: '', type: '', cap: '', qty: '', totCap: '', hp: '', totHp: '', area: '' }]);
         window.dispatchEvent(new Event('unit-form-updated'));
+        fetch('http://localhost:8085/api/chiller/operating-logs').then(r => r.json()).then(d => { if (d) setExistingOperatingLogs(d); }).catch(console.error);
         setTimeout(() => { setChillerSavedMsg(''); if (onClose) onClose(); }, 1500);
       } else {
         setChillerSavedMsg('✗ Failed to save – check backend connection.');
@@ -441,6 +596,21 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     } catch (e) { console.error(e); }
   };
 
+  const handleUpdateStaff = async (staffMember) => {
+    try {
+      await fetch('http://localhost:8085/api/chiller/update-staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(staffMember)
+      });
+      alert('Staff data updated successfully!');
+      window.dispatchEvent(new Event('unit-form-updated'));
+    } catch (e) {
+      console.error(e);
+      alert('Failed to update staff data');
+    }
+  };
+
   const onSaveEquipments = async () => {
     setChillerSaving(true);
     try {
@@ -467,6 +637,21 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       fetch('http://localhost:8085/api/chiller/equipment').then(r => r.json()).then(d => setExistingEquipments(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) { console.error(e); }
+  };
+
+  const handleUpdateEquipment = async (equipment) => {
+    try {
+      await fetch('http://localhost:8085/api/chiller/update-equipment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(equipment)
+      });
+      alert('Equipment data updated successfully!');
+      window.dispatchEvent(new Event('unit-form-updated'));
+    } catch (e) {
+      console.error(e);
+      alert('Failed to update equipment data');
+    }
   };
 
   const onSavePlantSpecs = async () => {
@@ -636,6 +821,22 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       }
     };
     fetchHostelData();
+
+    const fetchMessData = async () => {
+      if (unitName === 'Mess') {
+        try {
+          const res = await fetch('http://localhost:8085/api/mess/data');
+          if (res.ok) {
+            const data = await res.json();
+            if (data.equipment) setExistingMessEquipments(data.equipment);
+            if (data.staff) setExistingMessStaffs(data.staff);
+          }
+        } catch (e) {
+          console.warn('Backend not reachable');
+        }
+      }
+    };
+    fetchMessData();
   }, [unitName]);
 
   useEffect(() => {
@@ -692,6 +893,8 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         .map(w => ({ ...w, role: w.role || 'Chief Warden', floor: w.floor || 'ALL FLOORS' }));
       const cleanedResidents = (currentBlockData.residentList || [])
         .filter(r => r.name?.trim() || r.rollNo?.trim() || r.roomNo?.trim());
+      const cleanedAbsents = (currentBlockData.absentList || [])
+        .filter(r => r.name?.trim() || r.rollNo?.trim() || r.roomNo?.trim());
       const cleanedComplaints = (currentBlockData.complaints || [])
         .filter(c => c.type || c.desc?.trim());
       const cleanedFloorDetails = (currentBlockData.floorDetails || [])
@@ -740,6 +943,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         staffCount: staffSum,
         wardens: cleanedWardens,
         residentList: cleanedResidents,
+        absentList: cleanedAbsents,
         complaints: cleanedComplaints,
         floorDetails: cleanedFloorDetails
       };
@@ -866,7 +1070,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     try {
       const payload = {
         date: values.date,
-        blockName: values.blockName,
+        blockName: values.blockName || 'Boys Hostel',
         breakfast: parseInt(values.breakfast) || 0,
         lunch: parseInt(values.lunch) || 0,
         dinner: parseInt(values.dinner) || 0,
@@ -874,6 +1078,11 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         lunchCount: parseInt(values.lunchCount) || 0,
         dinnerCount: parseInt(values.dinnerCount) || 0
       };
+
+      if (!payload.date) {
+        alert("Please select a date before submitting.");
+        return;
+      }
 
       const response = await fetch('http://localhost:8085/api/mess/log-waste', {
         method: 'POST',
@@ -925,24 +1134,81 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
 
   const submitMessStaff = async () => {
     try {
-      if (!messStaff.name || !messStaff.role) { alert('Name and Role are required'); return; }
+      const valid = messStaffs.filter(s => s.name || s.role);
+      if (valid.length === 0) { alert('Please enter at least one valid staff to save.'); return; }
+      
       const res = await fetch('http://localhost:8085/api/mess/staff', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(messStaff)
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid)
       });
-      if (res.ok) { alert('Staff saved!'); setMessStaff({ ...messStaff, name: '', role: '', contact: ''}); }
+      if (res.ok) { 
+        alert('Staff saved!'); 
+        setMessStaffs([{ blockName: 'Boys Hostel', name: '', role: '', shift: 'Morning', contact: '' }]);
+        fetch('http://localhost:8085/api/mess/data').then(r => r.json()).then(d => setExistingMessStaffs(d.staff || []));
+        window.dispatchEvent(new Event('unit-form-updated'));
+      }
       else alert('Failed to save staff: ' + await res.text());
     } catch(e) { alert('Error: ' + e.message); }
   };
 
+  const handleUpdateMessStaff = async (staff) => {
+    try {
+      await fetch('http://localhost:8085/api/mess/update-staff', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(staff)
+      });
+      alert('Staff updated successfully!');
+      window.dispatchEvent(new Event('unit-form-updated'));
+    } catch(e) { alert('Failed to update staff'); }
+  };
+
+  const handleDeleteMessStaff = async (id) => {
+    try {
+      await fetch(`http://localhost:8085/api/mess/delete-staff?id=${id}`, { method: 'DELETE' });
+      fetch('http://localhost:8085/api/mess/data').then(r => r.json()).then(d => setExistingMessStaffs(d.staff || []));
+      window.dispatchEvent(new Event('unit-form-updated'));
+    } catch(e) { console.error(e); }
+  };
+
   const submitMessEquip = async () => {
     try {
-      if (!messEquip.name) { alert('Equipment Name is required'); return; }
+      const valid = messEquipments.filter(e => e.name);
+      if (valid.length === 0) { alert('Please enter at least one valid equipment to save.'); return; }
+      
+      const payload = valid.map(e => ({
+        ...e, total: parseInt(e.total)||0, working: parseInt(e.working)||0, damaged: parseInt(e.damaged)||0
+      }));
+
       const res = await fetch('http://localhost:8085/api/mess/equipment', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(messEquip)
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
-      if (res.ok) { alert('Equipment saved!'); setMessEquip({ ...messEquip, name: '', total: 0, working: 0, damaged: 0 }); }
+      if (res.ok) { 
+        alert('Equipment saved!'); 
+        setMessEquipments([{ blockName: 'Boys Hostel', name: '', total: 0, working: 0, damaged: 0, status: 'Working' }]);
+        fetch('http://localhost:8085/api/mess/data').then(r => r.json()).then(d => setExistingMessEquipments(d.equipment || []));
+        window.dispatchEvent(new Event('unit-form-updated'));
+      }
       else alert('Failed to save equipment: ' + await res.text());
     } catch(e) { alert('Error: ' + e.message); }
+  };
+
+  const handleUpdateMessEquipment = async (equipment) => {
+    try {
+      const payload = {
+        ...equipment, total: parseInt(equipment.total)||0, working: parseInt(equipment.working)||0, damaged: parseInt(equipment.damaged)||0
+      };
+      await fetch('http://localhost:8085/api/mess/update-equipment', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+      });
+      alert('Equipment updated successfully!');
+      window.dispatchEvent(new Event('unit-form-updated'));
+    } catch(e) { alert('Failed to update equipment'); }
+  };
+
+  const handleDeleteMessEquipment = async (id) => {
+    try {
+      await fetch(`http://localhost:8085/api/mess/delete-equipment?id=${id}`, { method: 'DELETE' });
+      fetch('http://localhost:8085/api/mess/data').then(r => r.json()).then(d => setExistingMessEquipments(d.equipment || []));
+      window.dispatchEvent(new Event('unit-form-updated'));
+    } catch(e) { console.error(e); }
   };
 
 
@@ -1006,6 +1272,115 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     }));
   };
 
+  const handleGenericFileUpload = (setState, schema, e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target.result;
+        const workbook = XLSX.read(bstr, { type: 'binary' });
+        const wsname = workbook.SheetNames[0];
+        const ws = workbook.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+        
+        const newRows = data.map(row => {
+          const newObj = {};
+          Object.keys(schema).forEach(key => {
+            const matchedKey = Object.keys(row).find(rKey => rKey.toLowerCase().replace(/[^a-z0-9]/g, '') === key.toLowerCase().replace(/[^a-z0-9]/g));
+            newObj[key] = matchedKey ? String(row[matchedKey] || '') : schema[key];
+          });
+          return newObj;
+        });
+        
+        if (newRows.length > 0) {
+          setState(prev => [...(prev || []), ...newRows]);
+        }
+      } catch (err) {
+        console.error("Error parsing Excel:", err);
+        alert("Failed to parse Excel file.");
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = null;
+  };
+
+  const handleWardenFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target.result;
+        const workbook = XLSX.read(bstr, { type: 'binary' });
+        const wsname = workbook.SheetNames[0];
+        const ws = workbook.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        
+        const newWardens = [];
+        for (let i = 0; i < data.length; i++) {
+          const row = data[i];
+          if (!row || row.length === 0) continue;
+
+          const strRow = row.map(c => String(c || '').trim());
+          const strRowUpper = strRow.map(c => c.toUpperCase());
+          
+          if (i === 0 && (strRowUpper.includes('BLOCK') || strRowUpper.includes('NAME'))) continue;
+
+          const blockIndex = strRowUpper.indexOf(String(selectedHostelBlock).toUpperCase());
+          if (blockIndex !== -1) {
+            const otherCols = strRow.filter((_, idx) => idx !== blockIndex);
+            
+            let name = '';
+            let phone = '';
+            let role = 'Chief Warden';
+            let floor = 'ALL FLOORS';
+            
+            let nameFound = false;
+            for (let c of otherCols) {
+              if (!c) continue;
+              const cUpper = c.toUpperCase();
+              
+              if (/^\d{8,15}$/.test(c.replace(/\D/g, ''))) {
+                phone = c;
+              } else if (cUpper.includes('WARDEN') || cUpper.includes('CARE') || cUpper.includes('CLEANER') || cUpper.includes('KEEPER') || cUpper.includes('SECURITY')) {
+                role = c;
+              } else if (cUpper === 'GROUND' || cUpper === 'FIRST' || cUpper === 'SECOND' || cUpper === 'THIRD' || cUpper === 'ALL FLOORS' || cUpper.includes('&') || /^\d$/.test(cUpper)) {
+                floor = c;
+              } else if (!nameFound) {
+                name = c;
+                nameFound = true;
+              }
+            }
+            
+            if (!phone) {
+              phone = `99${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`;
+            }
+            if (!name) name = "Unknown Staff";
+            
+            newWardens.push({ name, phone, role, floor });
+          }
+        }
+        
+        if (newWardens.length > 0) {
+          setCurrentBlockData(prev => ({
+            ...prev,
+            wardens: [...(prev.wardens || []), ...newWardens]
+          }));
+          alert(`Successfully extracted and imported ${newWardens.length} staff members for ${selectedHostelBlock}!`);
+        } else {
+          alert(`No staff members found for the block "${selectedHostelBlock}" in the uploaded file.`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Failed to parse Excel file.');
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = null; // Reset input
+  };
+
   const removeWarden = (index) => {
     const newList = (currentBlockData.wardens || []).filter((_, i) => i !== index);
     setCurrentBlockData(prev => ({ ...prev, wardens: newList }));
@@ -1022,6 +1397,160 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       ...prev,
       residentList: [...(prev.residentList || []), { name: '', rollNo: '', roomNo: '' }]
     }));
+  };
+
+  const removeAbsentStudent = (index) => {
+    const newList = (currentBlockData.absentList || []).filter((_, i) => i !== index);
+    setCurrentBlockData(prev => ({ ...prev, absentList: newList }));
+  };
+
+  const updateAbsentField = (index, key, value) => {
+    const newList = [...(currentBlockData.absentList || [])];
+    newList[index] = { ...newList[index], [key]: value };
+    setCurrentBlockData(prev => ({ ...prev, absentList: newList }));
+  };
+
+  const addAbsentStudent = () => {
+    setCurrentBlockData(prev => ({
+      ...prev,
+      absentList: [...(prev.absentList || []), { name: '', rollNo: '', roomNo: '' }]
+    }));
+  };
+
+  const handleAbsentFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target.result;
+        const workbook = XLSX.read(bstr, { type: 'binary' });
+        const wsname = workbook.SheetNames[0];
+        const ws = workbook.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false });
+        
+        let headerRow = [];
+        let startIndex = 0;
+        
+        for (let i = 0; i < Math.min(10, data.length); i++) {
+          const rowStr = data[i].join(' ').toLowerCase();
+          if (rowStr.includes('hostel') && rowStr.includes('name') && rowStr.includes('roll')) {
+            headerRow = data[i].map(h => String(h || '').toLowerCase().trim());
+            startIndex = i + 1;
+            break;
+          }
+        }
+        
+        if (headerRow.length === 0) {
+          alert('Could not detect header row. Please ensure columns like DATE, ROLL NO, NAME, HOSTEL exist.');
+          return;
+        }
+
+        const dateIdx = headerRow.findIndex(h => h.includes('date'));
+        const hostelIdx = headerRow.findIndex(h => h === 'hostel' || h === 'block');
+        const nameIdx = headerRow.findIndex(h => h === 'name' || h.includes('student name'));
+        const rollIdx = headerRow.findIndex(h => h.includes('roll') || h.includes('reg'));
+        const roomIdx = headerRow.findIndex(h => h.includes('room'));
+
+        if (dateIdx === -1 || hostelIdx === -1 || nameIdx === -1 || rollIdx === -1) {
+          alert('Missing required columns. Please ensure DATE, ROLL NO, NAME, and HOSTEL columns exist in the file.');
+          return;
+        }
+
+        const today = new Date();
+        const defaultDateStr = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
+        
+        const targetDateInput = window.prompt("Extract absent students for which date? (Must match format in Excel)", defaultDateStr);
+        if (!targetDateInput) return;
+
+        const newAbsents = [];
+        const currentHostelName = (currentBlockData.name || '').toLowerCase().trim();
+
+        for (let i = startIndex; i < data.length; i++) {
+          const row = data[i];
+          if (!row || !row[dateIdx]) continue;
+          
+          const rowDateStr = String(row[dateIdx]).trim();
+          const rowHostelStr = String(row[hostelIdx] || '').toLowerCase().trim();
+
+          const isMatchingDate = rowDateStr === targetDateInput.trim();
+          const isMatchingHostel = rowHostelStr === currentHostelName || 
+                                   currentHostelName.includes(rowHostelStr) || 
+                                   rowHostelStr.includes(currentHostelName);
+
+          if (isMatchingDate && isMatchingHostel) {
+             newAbsents.push({
+                name: String(row[nameIdx] || '').trim(),
+                rollNo: String(row[rollIdx] || '').trim(),
+                roomNo: roomIdx !== -1 ? String(row[roomIdx] || '').trim() : ''
+             });
+          }
+        }
+        
+        if (newAbsents.length > 0) {
+          setCurrentBlockData(prev => ({
+            ...prev,
+            absentList: [...(prev.absentList || []), ...newAbsents]
+          }));
+          alert(`Successfully extracted ${newAbsents.length} absent students for ${currentBlockData.name} on ${targetDateInput}!`);
+        } else {
+          alert(`No matching students found for Block: ${currentBlockData.name} and Date: ${targetDateInput}.`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Failed to parse Excel file. Please check the console for details.');
+      }
+      e.target.value = null;
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleResidentFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target.result;
+        const workbook = XLSX.read(bstr, { type: 'binary' });
+        const wsname = workbook.SheetNames[0];
+        const ws = workbook.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        
+        const newResidents = [];
+        let startIndex = 0;
+        if (data.length > 0 && typeof data[0][0] === 'string' && data[0][0].toLowerCase().includes('name')) {
+          startIndex = 1;
+        }
+        for (let i = startIndex; i < data.length; i++) {
+          const row = data[i];
+          if (row && (row[0] || row[1] || row[2])) {
+            newResidents.push({
+              name: String(row[0] || '').trim(),
+              rollNo: String(row[1] || '').trim(),
+              roomNo: String(row[2] || '').trim()
+            });
+          }
+        }
+        
+        if (newResidents.length > 0) {
+          setCurrentBlockData(prev => ({
+            ...prev,
+            residentList: [...(prev.residentList || []), ...newResidents]
+          }));
+          alert(`Successfully imported ${newResidents.length} students!`);
+        } else {
+          alert('No valid student data found in the file.');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Failed to parse Excel file. Please ensure it has columns: Name, Roll No, Room No');
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = null; // Reset input
   };
 
   const removeResident = (index) => {
@@ -1061,7 +1590,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     const nextFloorNumber = currentFloors.length; // E.g., 0 for first floor, 1 for second floor
     setCurrentBlockData(prev => ({
       ...prev,
-      floorDetails: [...(prev.floorDetails || []), { floorNumber: nextFloorNumber, totalRooms: 0, roomTypes: 'Single Cot', totalBeds: 0 }]
+      floorDetails: [...(prev.floorDetails || []), { floorNumber: nextFloorNumber, totalRooms: 0, studentRooms: 0, wardenRooms: 0, supervisorRooms: 0, restRooms: 0, roomTypes: 'Single Cot', totalBeds: 0 }]
     }));
   };
 
@@ -1188,7 +1717,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '12px', background: 'rgba(255,255,255,0.15)', padding: '10px 16px', borderRadius: '12px', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.2)', maxWidth: '100%', boxSizing: 'border-box' }}>
             <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffffff', whiteSpace: 'nowrap' }}>Log Date:</label>
-            <input type="date" value={chillerDate} onChange={e => setChillerDate(e.target.value)}
+            <input type="date" value={chillerDate} onChange={e => setChillerDate(e.target.value)} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}
               style={{ flex: 1, minWidth: 0, padding: '8px 12px', borderRadius: '8px', border: 'none', fontSize: '0.9rem', fontWeight: 700, color: '#1e3a8a', background: '#ffffff', outline: 'none', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)' }} />
           </div>
         </div>
@@ -1230,7 +1759,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
                 <h4 style={{ margin: 0, color: '#0f172a' }}>🏢 AHU Units Data Entry</h4>
-                <button onClick={() => setAhuUnits([...ahuUnits, { block: '', floor: '', loc: '', type: '', cap: '', qty: '', totCap: '', hp: '', totHp: '', area: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add AHU Unit</button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                    + Upload Excel
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setAhuUnits, { block: '', floor: '', loc: '', type: '', cap: '', qty: '', totCap: '', hp: '', totHp: '', area: '' }, e)} style={{ display: 'none' }} />
+                  </label>
+                  <button onClick={() => setAhuUnits([...ahuUnits, { block: '', floor: '', loc: '', type: '', cap: '', qty: '', totCap: '', hp: '', totHp: '', area: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add AHU Unit</button>
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto' }}>
                 {ahuUnits.map((u, i) => (
@@ -1336,7 +1871,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
                 <h4 style={{ margin: 0, color: '#0f172a' }}>❄️ Split A/C Data Entry</h4>
-                <button onClick={() => setSplitAcUnits([...splitAcUnits, { make: '', ton: '', model: '', block: '', dept: '', qty: '', totTon: '', loc: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Split A/C</button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                    + Upload Excel
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setSplitAcUnits, { make: '', ton: '', model: '', block: '', dept: '', qty: '', totTon: '', loc: '' }, e)} style={{ display: 'none' }} />
+                  </label>
+                  <button onClick={() => setSplitAcUnits([...splitAcUnits, { make: '', ton: '', model: '', block: '', dept: '', qty: '', totTon: '', loc: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Split A/C</button>
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto' }}>
                 {splitAcUnits.map((u, i) => (
@@ -1429,7 +1970,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
                 <h4 style={{ margin: 0, color: '#0f172a' }}>🌀 VRV A/C Data Entry</h4>
-                <button onClick={() => setVrvUnits([...vrvUnits, { make: '', ton: '', model: '', block: '', dept: '', qty: '', totTon: '', loc: '', notes: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add VRV</button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                    + Upload Excel
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setVrvUnits, { make: '', ton: '', model: '', block: '', dept: '', qty: '', totTon: '', loc: '', notes: '' }, e)} style={{ display: 'none' }} />
+                  </label>
+                  <button onClick={() => setVrvUnits([...vrvUnits, { make: '', ton: '', model: '', block: '', dept: '', qty: '', totTon: '', loc: '', notes: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add VRV</button>
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto' }}>
                 {vrvUnits.map((u, i) => (
@@ -1527,7 +2074,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
                 <h4 style={{ margin: 0, color: '#0f172a' }}>❄️ COLD Room Units Data Entry</h4>
-                <button onClick={() => setColdRoomUnits([...coldRoomUnits, { make: '', ton: '', model: '', block: '', dept: '', qty: '', totTon: '', loc: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add COLD Room</button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                    + Upload Excel
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setColdRoomUnits, { make: '', ton: '', model: '', block: '', dept: '', qty: '', totTon: '', loc: '' }, e)} style={{ display: 'none' }} />
+                  </label>
+                  <button onClick={() => setColdRoomUnits([...coldRoomUnits, { make: '', ton: '', model: '', block: '', dept: '', qty: '', totTon: '', loc: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add COLD Room</button>
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto' }}>
                 {coldRoomUnits.map((u, i) => (
@@ -1620,7 +2173,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
                 <h4 style={{ margin: 0, color: '#0f172a' }}>🛠️ Breakdown Maintenance Data Entry</h4>
-                <button onClick={() => setBreakdowns([...breakdowns, { date: '', equipment: '', issue: '', resolution: '', status: 'Pending' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Breakdown</button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                    + Upload Excel
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setBreakdowns, { date: '', equipment: '', issue: '', resolution: '', status: 'Pending' }, e)} style={{ display: 'none' }} />
+                  </label>
+                  <button onClick={() => setBreakdowns([...breakdowns, { date: '', equipment: '', issue: '', resolution: '', status: 'Pending' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Breakdown</button>
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto' }}>
                 {breakdowns.map((u, i) => (
@@ -1704,7 +2263,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
                 <h4 style={{ margin: 0, color: '#0f172a' }}>📦 Product Specifications (Plant Specs)</h4>
-                <button onClick={() => setPlantSpecs([...plantSpecs, { parameter: '', value: '', unit: '', remarks: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Product</button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                    + Upload Excel
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setPlantSpecs, { parameter: '', value: '', unit: '', remarks: '' }, e)} style={{ display: 'none' }} />
+                  </label>
+                  <button onClick={() => setPlantSpecs([...plantSpecs, { parameter: '', value: '', unit: '', remarks: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Product</button>
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {existingPlantSpecs.map((u, i) => (
@@ -1760,32 +2325,47 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
                 <h4 style={{ margin: 0, color: '#0f172a' }}>👥 Manpower / Staff</h4>
-                <button onClick={() => setStaff([...staff, { name: '', role: '', shift: 'General Shift', attendance: 'Present', contact: '', dateJoined: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Staff</button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                    + Upload Excel
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setStaff, { name: '', role: '', shift: 'General Shift', attendance: 'Present', contact: '', dateJoined: '' }, e)} style={{ display: 'none' }} />
+                  </label>
+                  <button onClick={() => setStaff([...staff, { name: '', role: '', shift: 'General Shift', attendance: 'Present', contact: '', dateJoined: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Staff</button>
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {existingStaff.map((st, i) => (
                   <div key={st.id} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
                       <FieldBox label="Staff Name">
-                        <input type="text" value={st.name} readOnly style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        <input type="text" value={st.name || ''} onChange={e => { const n = [...existingStaff]; n[i].name = e.target.value; setExistingStaff(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
                       </FieldBox>
                       <FieldBox label="Role">
-                        <input type="text" value={st.role} readOnly style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        <input type="text" value={st.role || ''} onChange={e => { const n = [...existingStaff]; n[i].role = e.target.value; setExistingStaff(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
                       </FieldBox>
                       <FieldBox label="Shift">
-                        <input type="text" value={st.shift} readOnly style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        <select value={st.shift || ''} onChange={e => { const n = [...existingStaff]; n[i].shift = e.target.value; setExistingStaff(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }}>
+                          <option value="General Shift">General Shift</option>
+                          <option value="Morning Shift">Morning Shift</option>
+                          <option value="Evening Shift">Evening Shift</option>
+                          <option value="Night Shift">Night Shift</option>
+                        </select>
                       </FieldBox>
                       <FieldBox label="Date Joined">
-                        <input type="text" value={st.dateJoined} readOnly style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        <input type="text" value={st.dateJoined || ''} onChange={e => { const n = [...existingStaff]; n[i].dateJoined = e.target.value; setExistingStaff(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
                       </FieldBox>
                       <FieldBox label="Contact">
-                        <input type="text" value={st.contact} readOnly style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        <input type="text" value={st.contact || ''} onChange={e => { const n = [...existingStaff]; n[i].contact = e.target.value; setExistingStaff(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
                       </FieldBox>
                       <FieldBox label="Attendance">
-                        <input type="text" value={st.attendance} readOnly style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        <select value={st.attendance || ''} onChange={e => { const n = [...existingStaff]; n[i].attendance = e.target.value; setExistingStaff(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }}>
+                          <option value="Present">Present</option>
+                          <option value="Absent">Absent</option>
+                        </select>
                       </FieldBox>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+                      <button onClick={() => handleUpdateStaff(st)} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
                       <button onClick={() => handleDeleteStaff(st.id)} style={{ padding: '10px 16px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove Staff</button>
                     </div>
                   </div>
@@ -1835,38 +2415,50 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
                 <h4 style={{ margin: 0, color: '#0f172a' }}>⚙️ Equipment Inventory</h4>
-                <button onClick={() => setEquipments([...equipments, { name: '', model: '', capacity: '', power: '', type: '', status: 'Active', refrigerant: '', lastService: '', health: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Equipment</button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                    + Upload Excel
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setEquipments, { name: '', model: '', capacity: '', power: '', type: '', status: 'Active', refrigerant: '', lastService: '', health: '' }, e)} style={{ display: 'none' }} />
+                  </label>
+                  <button onClick={() => setEquipments([...equipments, { name: '', model: '', capacity: '', power: '', type: '', status: 'Active', refrigerant: '', lastService: '', health: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Equipment</button>
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {existingEquipments.map((eq, i) => (
                   <div key={eq.id} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
                       <FieldBox label="Equipment Name">
-                        <input type="text" value={eq.name} readOnly style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        <input type="text" value={eq.name || ''} onChange={e => { const n = [...existingEquipments]; n[i].name = e.target.value; setExistingEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
                       </FieldBox>
                       <FieldBox label="Model">
-                        <input type="text" value={eq.model} readOnly style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        <input type="text" value={eq.model || ''} onChange={e => { const n = [...existingEquipments]; n[i].model = e.target.value; setExistingEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
                       </FieldBox>
                       <FieldBox label="Capacity">
-                        <input type="text" value={eq.capacity} readOnly style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        <input type="text" value={eq.capacity || ''} onChange={e => { const n = [...existingEquipments]; n[i].capacity = e.target.value; setExistingEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
                       </FieldBox>
                       <FieldBox label="Type">
-                        <input type="text" value={eq.type} readOnly style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        <input type="text" value={eq.type || ''} onChange={e => { const n = [...existingEquipments]; n[i].type = e.target.value; setExistingEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
                       </FieldBox>
                       <FieldBox label="Refrigerant">
-                        <input type="text" value={eq.refrigerant} readOnly style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        <input type="text" value={eq.refrigerant || ''} onChange={e => { const n = [...existingEquipments]; n[i].refrigerant = e.target.value; setExistingEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
                       </FieldBox>
                       <FieldBox label="Status">
-                        <input type="text" value={eq.status} readOnly style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        <select value={eq.status || ''} onChange={e => { const n = [...existingEquipments]; n[i].status = e.target.value; setExistingEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }}>
+                          <option value="Running">Running</option>
+                          <option value="Standby">Standby</option>
+                          <option value="Active">Active</option>
+                          <option value="Inactive">Inactive</option>
+                        </select>
                       </FieldBox>
-                      <FieldBox label="Last Service">
-                        <input type="text" value={eq.lastService} readOnly style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                      <FieldBox label="Last Service Date">
+                        <input type="date" value={eq.lastService || ''} onChange={e => { const n = [...existingEquipments]; n[i].lastService = e.target.value; setExistingEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
                       </FieldBox>
                       <FieldBox label="Health %">
-                        <input type="number" value={eq.health} readOnly style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        <input type="number" value={eq.health || 0} onChange={e => { const n = [...existingEquipments]; n[i].health = parseInt(e.target.value) || 0; setExistingEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
                       </FieldBox>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+                      <button onClick={() => handleUpdateEquipment(eq)} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
                       <button onClick={() => handleDeleteEquipment(eq.id)} style={{ padding: '10px 16px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove Eq</button>
                     </div>
                   </div>
@@ -2038,12 +2630,14 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button onClick={onClose}
             style={{ padding: '11px 28px', background: '#fff', color: '#475569', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem' }}>
-            Cancel
+            {chillerTab === 'static' ? 'Close' : 'Cancel'}
           </button>
-          <button onClick={onSaveChillerOperating} disabled={chillerSaving}
-            style={{ padding: '11px 28px', background: chillerSaving ? '#94a3b8' : 'linear-gradient(135deg,#2563eb,#1d4ed8)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: chillerSaving ? 'not-allowed' : 'pointer', fontSize: '0.9rem', boxShadow: '0 4px 12px rgba(37,99,235,0.3)' }}>
-            {chillerSaving ? 'Saving…' : '💾 Save to Database'}
-          </button>
+          {chillerTab === 'dynamic' && (
+            <button onClick={onSaveChillerOperating} disabled={chillerSaving}
+              style={{ padding: '11px 28px', background: chillerSaving ? '#94a3b8' : 'linear-gradient(135deg,#2563eb,#1d4ed8)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: chillerSaving ? 'not-allowed' : 'pointer', fontSize: '0.9rem', boxShadow: '0 4px 12px rgba(37,99,235,0.3)' }}>
+              {chillerSaving ? 'Saving…' : '💾 Save Dynamic Data'}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -2184,90 +2778,191 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
           {messTab === 'static' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
               
-              {/* Equipment Form */}
+              {/* Equipment Inventory */}
               <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <h4 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>Add / Update Equipment</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                    Block
-                    <select value={messEquip.blockName} onChange={e => setMessEquip({...messEquip, blockName: e.target.value})} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #ccc' }}>
-                      <option value="Boys Hostel">Boys Hostel</option>
-                      <option value="Boys Day Scholar">Boys Day Scholar</option>
-                      <option value="Girls">Girls</option>
-                    </select>
-                  </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                    Equipment Name
-                    <input type="text" value={messEquip.name} onChange={e => setMessEquip({...messEquip, name: e.target.value})} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #ccc' }} placeholder="e.g. Grinder" />
-                  </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                    Total Quantity
-                    <input type="number" min="0" value={messEquip.total} onChange={e => setMessEquip({...messEquip, total: parseInt(e.target.value)})} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #ccc' }} />
-                  </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                    Working
-                    <input type="number" min="0" value={messEquip.working} onChange={e => setMessEquip({...messEquip, working: parseInt(e.target.value)})} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #ccc' }} />
-                  </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                    Damaged
-                    <input type="number" min="0" value={messEquip.damaged} onChange={e => setMessEquip({...messEquip, damaged: parseInt(e.target.value)})} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #ccc' }} />
-                  </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                    Status
-                    <select value={messEquip.status} onChange={e => setMessEquip({...messEquip, status: e.target.value})} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #ccc' }}>
-                      <option value="Working">Working</option>
-                      <option value="Partial Working">Partial Working</option>
-                      <option value="Under Maintenance">Under Maintenance</option>
-                      <option value="Not Working">Not Working</option>
-                    </select>
-                  </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                  <h4 style={{ margin: 0, color: '#0f172a' }}>⚙️ Equipment Inventory</h4>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                      + Upload Excel
+                      <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setMessEquipments, { blockName: 'Boys Hostel', name: '', total: 0, working: 0, damaged: 0, status: 'Working' }, e)} style={{ display: 'none' }} />
+                    </label>
+                    <button onClick={() => setMessEquipments([...messEquipments, { blockName: 'Boys Hostel', name: '', total: 0, working: 0, damaged: 0, status: 'Working' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Equipment</button>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {existingMessEquipments.map((eq, i) => (
+                    <div key={eq.id} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                        <FieldBox label="Block">
+                          <select value={eq.blockName || ''} onChange={e => { const n = [...existingMessEquipments]; n[i].blockName = e.target.value; setExistingMessEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }}>
+                            <option value="Boys Hostel">Boys Hostel</option>
+                            <option value="Boys Day Scholar">Boys Day Scholar</option>
+                            <option value="Girls">Girls</option>
+                          </select>
+                        </FieldBox>
+                        <FieldBox label="Equipment Name">
+                          <input type="text" value={eq.name || ''} onChange={e => { const n = [...existingMessEquipments]; n[i].name = e.target.value; setExistingMessEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Total">
+                          <input type="number" min="0" value={eq.total || 0} onChange={e => { const n = [...existingMessEquipments]; n[i].total = parseInt(e.target.value) || 0; setExistingMessEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Working">
+                          <input type="number" min="0" value={eq.working || 0} onChange={e => { const n = [...existingMessEquipments]; n[i].working = parseInt(e.target.value) || 0; setExistingMessEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Damaged">
+                          <input type="number" min="0" value={eq.damaged || 0} onChange={e => { const n = [...existingMessEquipments]; n[i].damaged = parseInt(e.target.value) || 0; setExistingMessEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Status">
+                          <select value={eq.status || ''} onChange={e => { const n = [...existingMessEquipments]; n[i].status = e.target.value; setExistingMessEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }}>
+                            <option value="Working">Working</option>
+                            <option value="Partial Working">Partial Working</option>
+                            <option value="Under Maintenance">Under Maintenance</option>
+                            <option value="Not Working">Not Working</option>
+                          </select>
+                        </FieldBox>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+                        <button onClick={() => handleUpdateMessEquipment(eq)} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
+                        <button onClick={() => handleDeleteMessEquipment(eq.id)} style={{ padding: '10px 16px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove Eq</button>
+                      </div>
+                    </div>
+                  ))}
+                  {messEquipments.map((eq, i) => (
+                    <div key={`new-e-${i}`} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                        <FieldBox label="Block">
+                          <select value={eq.blockName} onChange={e => { const n = [...messEquipments]; n[i].blockName = e.target.value; setMessEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }}>
+                            <option value="Boys Hostel">Boys Hostel</option>
+                            <option value="Boys Day Scholar">Boys Day Scholar</option>
+                            <option value="Girls">Girls</option>
+                          </select>
+                        </FieldBox>
+                        <FieldBox label="Eq Name">
+                          <input type="text" placeholder="e.g. Grinder" value={eq.name} onChange={e => { const n = [...messEquipments]; n[i].name = e.target.value; setMessEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }} />
+                        </FieldBox>
+                        <FieldBox label="Total">
+                          <input type="number" min="0" value={eq.total} onChange={e => { const n = [...messEquipments]; n[i].total = parseInt(e.target.value) || 0; setMessEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }} />
+                        </FieldBox>
+                        <FieldBox label="Working">
+                          <input type="number" min="0" value={eq.working} onChange={e => { const n = [...messEquipments]; n[i].working = parseInt(e.target.value) || 0; setMessEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }} />
+                        </FieldBox>
+                        <FieldBox label="Damaged">
+                          <input type="number" min="0" value={eq.damaged} onChange={e => { const n = [...messEquipments]; n[i].damaged = parseInt(e.target.value) || 0; setMessEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }} />
+                        </FieldBox>
+                        <FieldBox label="Status">
+                          <select value={eq.status} onChange={e => { const n = [...messEquipments]; n[i].status = e.target.value; setMessEquipments(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }}>
+                            <option value="Working">Working</option>
+                            <option value="Partial Working">Partial Working</option>
+                            <option value="Under Maintenance">Under Maintenance</option>
+                            <option value="Not Working">Not Working</option>
+                          </select>
+                        </FieldBox>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <button onClick={() => setMessEquipments(messEquipments.filter((_, idx) => idx !== i))} style={{ padding: '10px 16px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Cancel</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
                 <div style={{ marginTop: '16px', textAlign: 'right' }}>
-                  <button onClick={submitMessEquip} style={{ padding: '10px 20px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.3)' }}>Save Equipment</button>
+                  <button onClick={submitMessEquip} style={{ padding: '10px 20px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.3)' }}>Save Equipment Data</button>
                 </div>
               </div>
 
-              {/* Staff Form */}
+              {/* Staff Roster */}
               <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                <h4 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>Add / Update Staff</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                    Block
-                    <select value={messStaff.blockName} onChange={e => setMessStaff({...messStaff, blockName: e.target.value})} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #ccc' }}>
-                      <option value="Boys Hostel">Boys Hostel</option>
-                      <option value="Girls">Girls</option>
-                    </select>
-                  </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                    Staff Name
-                    <input type="text" value={messStaff.name} onChange={e => setMessStaff({...messStaff, name: e.target.value})} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #ccc' }} placeholder="e.g. John Doe" />
-                  </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                    Role
-                    <select value={messStaff.role} onChange={e => setMessStaff({...messStaff, role: e.target.value})} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #ccc' }}>
-                      <option value="">Select Role</option>
-                      <option value="Head Chef">Head Chef</option>
-                      <option value="Assistant Cook">Assistant Cook</option>
-                      <option value="Cleaner">Cleaner</option>
-                      <option value="Server">Server</option>
-                    </select>
-                  </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                    Shift
-                    <select value={messStaff.shift} onChange={e => setMessStaff({...messStaff, shift: e.target.value})} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #ccc' }}>
-                      <option value="Morning">Morning</option>
-                      <option value="Evening">Evening</option>
-                      <option value="Night">Night</option>
-                      <option value="All Day">All Day</option>
-                    </select>
-                  </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                    Contact Number
-                    <input type="text" value={messStaff.contact} onChange={e => setMessStaff({...messStaff, contact: e.target.value})} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #ccc' }} placeholder="e.g. 9876543210" />
-                  </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+                  <h4 style={{ margin: 0, color: '#0f172a' }}>🧑‍🍳 Staff Roster</h4>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <label style={{ cursor: 'pointer', padding: '8px 16px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem' }}>
+                      + Upload Excel
+                      <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setMessStaffs, { blockName: 'Boys Hostel', name: '', role: '', shift: 'Morning', contact: '' }, e)} style={{ display: 'none' }} />
+                    </label>
+                    <button onClick={() => setMessStaffs([...messStaffs, { blockName: 'Boys Hostel', name: '', role: '', shift: 'Morning', contact: '' }])} style={{ padding: '8px 16px', background: '#f8fafc', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>+ Add Staff</button>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {existingMessStaffs.map((st, i) => (
+                    <div key={st.id} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                        <FieldBox label="Block">
+                          <select value={st.blockName || ''} onChange={e => { const n = [...existingMessStaffs]; n[i].blockName = e.target.value; setExistingMessStaffs(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }}>
+                            <option value="Boys Hostel">Boys Hostel</option>
+                            <option value="Girls">Girls</option>
+                          </select>
+                        </FieldBox>
+                        <FieldBox label="Staff Name">
+                          <input type="text" value={st.name || ''} onChange={e => { const n = [...existingMessStaffs]; n[i].name = e.target.value; setExistingMessStaffs(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Role">
+                          <select value={st.role || ''} onChange={e => { const n = [...existingMessStaffs]; n[i].role = e.target.value; setExistingMessStaffs(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }}>
+                            <option value="">Select Role</option>
+                            <option value="Head Chef">Head Chef</option>
+                            <option value="Assistant Cook">Assistant Cook</option>
+                            <option value="Cleaner">Cleaner</option>
+                            <option value="Server">Server</option>
+                          </select>
+                        </FieldBox>
+                        <FieldBox label="Shift">
+                          <select value={st.shift || ''} onChange={e => { const n = [...existingMessStaffs]; n[i].shift = e.target.value; setExistingMessStaffs(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }}>
+                            <option value="Morning">Morning</option>
+                            <option value="Evening">Evening</option>
+                            <option value="Night">Night</option>
+                            <option value="All Day">All Day</option>
+                          </select>
+                        </FieldBox>
+                        <FieldBox label="Contact">
+                          <input type="text" value={st.contact || ''} onChange={e => { const n = [...existingMessStaffs]; n[i].contact = e.target.value; setExistingMessStaffs(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+                        <button onClick={() => handleUpdateMessStaff(st)} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
+                        <button onClick={() => handleDeleteMessStaff(st.id)} style={{ padding: '10px 16px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove Staff</button>
+                      </div>
+                    </div>
+                  ))}
+                  {messStaffs.map((st, i) => (
+                    <div key={`new-st-${i}`} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                        <FieldBox label="Block">
+                          <select value={st.blockName} onChange={e => { const n = [...messStaffs]; n[i].blockName = e.target.value; setMessStaffs(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }}>
+                            <option value="Boys Hostel">Boys Hostel</option>
+                            <option value="Girls">Girls</option>
+                          </select>
+                        </FieldBox>
+                        <FieldBox label="Staff Name">
+                          <input type="text" placeholder="e.g. John Doe" value={st.name} onChange={e => { const n = [...messStaffs]; n[i].name = e.target.value; setMessStaffs(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }} />
+                        </FieldBox>
+                        <FieldBox label="Role">
+                          <select value={st.role} onChange={e => { const n = [...messStaffs]; n[i].role = e.target.value; setMessStaffs(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }}>
+                            <option value="">Select Role</option>
+                            <option value="Head Chef">Head Chef</option>
+                            <option value="Assistant Cook">Assistant Cook</option>
+                            <option value="Cleaner">Cleaner</option>
+                            <option value="Server">Server</option>
+                          </select>
+                        </FieldBox>
+                        <FieldBox label="Shift">
+                          <select value={st.shift} onChange={e => { const n = [...messStaffs]; n[i].shift = e.target.value; setMessStaffs(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }}>
+                            <option value="Morning">Morning</option>
+                            <option value="Evening">Evening</option>
+                            <option value="Night">Night</option>
+                            <option value="All Day">All Day</option>
+                          </select>
+                        </FieldBox>
+                        <FieldBox label="Contact">
+                          <input type="text" placeholder="e.g. 9876543210" value={st.contact} onChange={e => { const n = [...messStaffs]; n[i].contact = e.target.value; setMessStaffs(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)' }} />
+                        </FieldBox>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <button onClick={() => setMessStaffs(messStaffs.filter((_, idx) => idx !== i))} style={{ padding: '10px 16px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Cancel</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
                 <div style={{ marginTop: '16px', textAlign: 'right' }}>
-                  <button onClick={submitMessStaff} style={{ padding: '10px 20px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.3)' }}>Save Staff</button>
+                  <button onClick={submitMessStaff} style={{ padding: '10px 20px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.3)' }}>Save Staff Data</button>
                 </div>
               </div>
 
@@ -2529,12 +3224,27 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                 <div className="form-group-box">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
                     <h4 style={{ margin: 0 }}>Floor-wise Room Details</h4>
-                    <button
-                      onClick={addFloorDetail}
-                      style={{ padding: '6px 12px', fontSize: '0.8rem', background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', cursor: 'pointer', borderRadius: '6px', fontWeight: '600' }}
-                    >
-                      + Add Floor Row
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          if (window.confirm("Are you sure you want to remove ALL floor details?")) {
+                            if (window.confirm("This action cannot be undone. Please confirm again to delete ALL rows.")) {
+                              setCurrentBlockData(prev => ({ ...prev, floorDetails: [] }));
+                            }
+                          }
+                        }}
+                        style={{ padding: '6px 12px', fontSize: '0.8rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', cursor: 'pointer', borderRadius: '6px', fontWeight: '600' }}
+                      >
+                        Delete All
+                      </button>
+                      <button
+                        onClick={addFloorDetail}
+                        style={{ padding: '6px 12px', fontSize: '0.8rem', background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', cursor: 'pointer', borderRadius: '6px', fontWeight: '600' }}
+                      >
+                        + Add Floor Row
+                      </button>
+                    </div>
                   </div>
                   {(!currentBlockData.floorDetails || currentBlockData.floorDetails.length === 0) ? (
                     <p style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic', margin: 0 }}>No floor details entered yet. Set Number of Floors above or click + Add Floor Row.</p>
@@ -2542,37 +3252,73 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                       <thead>
                         <tr style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>
-                          <th style={{ padding: '8px 4px' }}>Floor Number</th>
-                          <th style={{ padding: '8px 4px' }}>Total Rooms in Floor</th>
-                          <th style={{ padding: '8px 4px' }}>Room Types Available</th>
-                          <th style={{ padding: '8px 4px' }}>Total Beds in Floor</th>
-                          <th style={{ padding: '8px 4px', width: '80px' }}>Action</th>
+                          <th style={{ padding: '8px 4px', fontSize: '0.75rem' }}>Floor</th>
+                          <th style={{ padding: '8px 4px', fontSize: '0.75rem' }}>Total Rms</th>
+                          <th style={{ padding: '8px 4px', fontSize: '0.75rem' }}>Student Rms</th>
+                          <th style={{ padding: '8px 4px', fontSize: '0.75rem' }}>Warden Rms</th>
+                          <th style={{ padding: '8px 4px', fontSize: '0.75rem' }}>Suprv. Rms</th>
+                          <th style={{ padding: '8px 4px', fontSize: '0.75rem' }}>Rest Rms</th>
+                          <th style={{ padding: '8px 4px', fontSize: '0.75rem' }}>Room Types</th>
+                          <th style={{ padding: '8px 4px', fontSize: '0.75rem' }}>Total Beds</th>
+                          <th style={{ padding: '8px 4px', fontSize: '0.75rem', width: '60px' }}>Action</th>
                         </tr>
                       </thead>
                       <tbody>
                         {currentBlockData.floorDetails.map((f, idx) => (
                           <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '6px 4px' }}>
+                            <td style={{ padding: '6px 2px' }}>
                               <input
                                 type="number"
                                 value={f.floorNumber}
                                 onChange={e => updateFloorDetailField(idx, 'floorNumber', parseInt(e.target.value) || 0)}
-                                style={{ width: '80px', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                                style={{ width: '50px', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
                               />
                             </td>
-                            <td style={{ padding: '6px 4px' }}>
+                            <td style={{ padding: '6px 2px' }}>
                               <input
                                 type="number"
                                 value={f.totalRooms || 0}
                                 onChange={e => updateFloorDetailField(idx, 'totalRooms', parseInt(e.target.value) || 0)}
-                                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
                               />
                             </td>
-                            <td style={{ padding: '6px 4px' }}>
+                            <td style={{ padding: '6px 2px' }}>
+                              <input
+                                type="number"
+                                value={f.studentRooms || 0}
+                                onChange={e => updateFloorDetailField(idx, 'studentRooms', parseInt(e.target.value) || 0)}
+                                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
+                              />
+                            </td>
+                            <td style={{ padding: '6px 2px' }}>
+                              <input
+                                type="number"
+                                value={f.wardenRooms || 0}
+                                onChange={e => updateFloorDetailField(idx, 'wardenRooms', parseInt(e.target.value) || 0)}
+                                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
+                              />
+                            </td>
+                            <td style={{ padding: '6px 2px' }}>
+                              <input
+                                type="number"
+                                value={f.supervisorRooms || 0}
+                                onChange={e => updateFloorDetailField(idx, 'supervisorRooms', parseInt(e.target.value) || 0)}
+                                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
+                              />
+                            </td>
+                            <td style={{ padding: '6px 2px' }}>
+                              <input
+                                type="number"
+                                value={f.restRooms || 0}
+                                onChange={e => updateFloorDetailField(idx, 'restRooms', parseInt(e.target.value) || 0)}
+                                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
+                              />
+                            </td>
+                            <td style={{ padding: '6px 2px' }}>
                               <select
                                 value={f.roomTypes || 'Single Cot'}
                                 onChange={e => updateFloorDetailField(idx, 'roomTypes', e.target.value)}
-                                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
                               >
                                 <option value="Single Cot">Single Cot</option>
                                 <option value="Double Cot">Double Cot</option>
@@ -2581,20 +3327,20 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                                 <option value="Single Cot / Double Cot / Four Cot">Single Cot / Double Cot / Four Cot</option>
                               </select>
                             </td>
-                            <td style={{ padding: '6px 4px' }}>
+                            <td style={{ padding: '6px 2px' }}>
                               <input
                                 type="number"
                                 value={f.totalBeds || 0}
                                 onChange={e => updateFloorDetailField(idx, 'totalBeds', parseInt(e.target.value) || 0)}
-                                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                                style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
                               />
                             </td>
-                            <td style={{ padding: '6px 4px' }}>
+                            <td style={{ padding: '6px 2px' }}>
                               <button
                                 onClick={() => removeFloorDetail(idx)}
-                                style={{ color: '#ef4444', border: '1px solid #fee2e2', background: '#fef2f2', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', width: '100%' }}
+                                style={{ color: '#ef4444', border: '1px solid #fee2e2', background: '#fef2f2', padding: '4px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', width: '100%', fontWeight: 700 }}
                               >
-                                Remove
+                                Del
                               </button>
                             </td>
                           </tr>
@@ -2611,65 +3357,65 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                     <label>Chief Warden Count
                       <input
                         type="number"
-                        value={currentBlockData.chiefWardenCount || 0}
-                        onChange={e => updateHostelField('chiefWardenCount', parseInt(e.target.value) || 0)}
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
+                        value={(currentBlockData.wardens || []).filter(w => w.role === 'Chief Warden').length}
+                        readOnly
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#64748b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
                       />
                     </label>
                     <label>Deputy Warden Count
                       <input
                         type="number"
-                        value={currentBlockData.deputyWardenCount || 0}
-                        onChange={e => updateHostelField('deputyWardenCount', parseInt(e.target.value) || 0)}
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
+                        value={(currentBlockData.wardens || []).filter(w => w.role === 'Deputy Warden').length}
+                        readOnly
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#64748b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
                       />
                     </label>
                     <label>Senior Caretaker Count
                       <input
                         type="number"
-                        value={currentBlockData.seniorCaretakerCount || 0}
-                        onChange={e => updateHostelField('seniorCaretakerCount', parseInt(e.target.value) || 0)}
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
+                        value={(currentBlockData.wardens || []).filter(w => w.role === 'Senior Caretaker').length}
+                        readOnly
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#64748b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
                       />
                     </label>
                     <label>Caretaker Count
                       <input
                         type="number"
-                        value={currentBlockData.caretakerCount || 0}
-                        onChange={e => updateHostelField('caretakerCount', parseInt(e.target.value) || 0)}
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
+                        value={(currentBlockData.wardens || []).filter(w => w.role === 'Caretaker').length}
+                        readOnly
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#64748b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
                       />
                     </label>
                     <label>Care Taker / Resident Attenders Count
                       <input
                         type="number"
-                        value={currentBlockData.careTakerAttenderCount || 0}
-                        onChange={e => updateHostelField('careTakerAttenderCount', parseInt(e.target.value) || 0)}
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
+                        value={(currentBlockData.wardens || []).filter(w => w.role === 'Care Taker /Resident Attenders' || w.role === 'Care Taker / Resident Attenders').length}
+                        readOnly
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#64748b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
                       />
                     </label>
                     <label>House Keeper Count
                       <input
                         type="number"
-                        value={currentBlockData.houseKeeperCount || 0}
-                        onChange={e => updateHostelField('houseKeeperCount', parseInt(e.target.value) || 0)}
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
+                        value={(currentBlockData.wardens || []).filter(w => w.role === 'House Keeper').length}
+                        readOnly
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#64748b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
                       />
                     </label>
                     <label>Bathroom Cleaner Count
                       <input
                         type="number"
-                        value={currentBlockData.bathroomCleanerCount || 0}
-                        onChange={e => updateHostelField('bathroomCleanerCount', parseInt(e.target.value) || 0)}
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
+                        value={(currentBlockData.wardens || []).filter(w => w.role === 'Bathroom cleaner' || w.role === 'Bathroom Cleaner').length}
+                        readOnly
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#64748b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
                       />
                     </label>
                     <label>Security Personnel Count
                       <input
                         type="number"
-                        value={currentBlockData.securityCount || 0}
-                        onChange={e => updateHostelField('securityCount', parseInt(e.target.value) || 0)}
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
+                        value={(currentBlockData.wardens || []).filter(w => w.role === 'Security Personnel').length}
+                        readOnly
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#64748b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
                       />
                     </label>
                   </div>
@@ -2718,7 +3464,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                         style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '0.9rem', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.02)', marginTop: '4px' }}
                       />
                     </label>
-                    <label style={{ display: 'block', marginBottom: '12px' }}>Electricity Usage (kWh - Daily)
+                    <label style={{ display: 'block', marginBottom: '12px' }}>Electricity Usage (Units - Daily)
                       <input
                         type="number"
                         value={values.electricity || ''}
@@ -2738,6 +3484,81 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                       />
                     </label>
                   </div>
+                </div>
+
+                {/* 4.5 Evening Biometric Attendance */}
+                <div className="form-group-box">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
+                    <h4 style={{ color: '#8b5cf6', margin: 0 }}>Evening Biometric Attendance (Absent Unexcused)</h4>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input 
+                        type="text" 
+                        placeholder="Search Students..." 
+                        value={absentSearchQuery}
+                        onChange={(e) => setAbsentSearchQuery(e.target.value)}
+                        style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                      />
+                      <label style={{ cursor: 'pointer', padding: '6px 12px', fontSize: '0.8rem', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '6px', fontWeight: '600' }}>
+                        + Upload Excel
+                        <input type="file" accept=".xlsx, .xls, .csv" onChange={handleAbsentFileUpload} style={{ display: 'none' }} />
+                      </label>
+                      <button onClick={addAbsentStudent} style={{ padding: '6px 12px', fontSize: '0.8rem', background: '#f5f3ff', color: '#6d28d9', border: '1px solid #ddd6fe', cursor: 'pointer', borderRadius: '6px', fontWeight: '600' }}>+ Add Student</button>
+                      <button onClick={(e) => {
+                        e.preventDefault();
+                        if (window.confirm("Are you sure you want to remove ALL absent students?")) {
+                          if (window.confirm("This action cannot be undone. Please confirm again to delete ALL absent students.")) {
+                            setCurrentBlockData(prev => ({ ...prev, absentList: [] }));
+                          }
+                        }
+                      }} style={{ padding: '6px 12px', fontSize: '0.8rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', cursor: 'pointer', borderRadius: '6px', fontWeight: '600' }}>Delete All</button>
+                    </div>
+                  </div>
+                  {(!currentBlockData.absentList || currentBlockData.absentList.length === 0) ? (
+                    <p style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>No absent unexcused students recorded.</p>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', fontSize: '0.85rem' }}>
+                        <thead>
+                          <tr style={{ textAlign: 'left' }}>
+                            <th>Name</th>
+                            <th>Roll No (Unique PK)</th>
+                            <th>Room No</th>
+                            <th style={{ width: '100px' }}>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(currentBlockData.absentList || [])
+                            .map((res, idx) => ({ res, idx }))
+                            .filter(({ res }) => (res.name || '').toLowerCase().includes(absentSearchQuery.toLowerCase()) || (res.rollNo || '').toLowerCase().includes(absentSearchQuery.toLowerCase()) || (res.roomNo || '').toLowerCase().includes(absentSearchQuery.toLowerCase()))
+                            .map(({ res, idx }) => (
+                            <tr key={idx}>
+                              <td><input type="text" value={res.name || ''} onChange={(e) => updateAbsentField(idx, 'name', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter name" /></td>
+                              <td><input type="text" value={res.rollNo || ''} onChange={(e) => updateAbsentField(idx, 'rollNo', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter unique roll no" /></td>
+                              <td><input type="text" value={res.roomNo || ''} onChange={(e) => updateAbsentField(idx, 'roomNo', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter room" /></td>
+                              <td>
+                                <button
+                                  onClick={() => removeAbsentStudent(idx)}
+                                  style={{
+                                    color: '#ef4444',
+                                    border: '1px solid #fee2e2',
+                                    background: '#fef2f2',
+                                    padding: '4px 12px',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '600',
+                                    width: '100%'
+                                  }}
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
 
                 {/* 5. Amenities & Common Areas */}
@@ -2775,52 +3596,37 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                 </div>
 
                 <div className="form-group-box">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
-                    <h4>Daily Complaints (Optional)</h4>
-                    <button onClick={addComplaint} style={{ padding: '4px 12px', fontSize: '0.8rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', cursor: 'pointer', borderRadius: '6px', fontWeight: '600' }}>+ Log New Complaint</button>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                    <div>
+                      <h4 style={{ margin: '0 0 4px 0' }}>Maintenance Complaints</h4>
+                      <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Log infrastructure issues, plumbing, or electrical faults.</p>
+                    </div>
+                    <button 
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (onClose) onClose();
+                        window.dispatchEvent(new CustomEvent('open-raise-complaint-modal'));
+                      }} 
+                      style={{ 
+                        padding: '8px 16px', 
+                        fontSize: '0.85rem', 
+                        background: '#fef2f2', 
+                        color: '#dc2626', 
+                        border: '1px solid #fecaca', 
+                        cursor: 'pointer', 
+                        borderRadius: '8px', 
+                        fontWeight: '700',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#fee2e2'}
+                      onMouseLeave={e => e.currentTarget.style.background = '#fef2f2'}
+                    >
+                      🚨 Raise Maintenance Ticket
+                    </button>
                   </div>
-                  {(!currentBlockData.complaints || currentBlockData.complaints.length === 0) ? (
-                    <p style={{ fontSize: '0.85rem', color: '#94a3b8', fontStyle: 'italic' }}>No complaints logged for today.</p>
-                  ) : (
-                    <table style={{ width: '100%', fontSize: '0.85rem' }}>
-                      <thead><tr style={{ textAlign: 'left' }}><th>Sector</th><th>Issue Description</th><th style={{ width: '100px' }}>Action</th></tr></thead>
-                      <tbody>
-                        {(currentBlockData.complaints || []).map((c, idx) => (
-                          <tr key={idx}>
-                            <td>
-                              <select value={c.type} onChange={(e) => updateComplaintField(idx, 'type', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
-                                <option value="">Select Sector</option>
-                                <option value="Electricity">Electricity</option>
-                                <option value="Water Supply">Water Supply</option>
-                                <option value="Housekeeping">Housekeeping</option>
-                                <option value="Maintenance">Maintenance</option>
-                                <option value="Internet/Wi-Fi">Internet/Wi-Fi</option>
-                              </select>
-                            </td>
-                            <td><input type="text" value={c.desc} onChange={(e) => updateComplaintField(idx, 'desc', e.target.value)} placeholder="Describe the issue..." style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} /></td>
-                            <td>
-                              <button
-                                onClick={() => removeComplaint(idx)}
-                                style={{
-                                  color: '#ef4444',
-                                  border: '1px solid #fee2e2',
-                                  background: '#fef2f2',
-                                  padding: '4px 12px',
-                                  borderRadius: '6px',
-                                  cursor: 'pointer',
-                                  fontSize: '0.8rem',
-                                  fontWeight: '600',
-                                  width: '100%'
-                                }}
-                              >
-                                Remove
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
                 </div>
 
                 <div className="form-group-box">
@@ -2834,8 +3640,20 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                         onChange={(e) => setWardenSearchQuery(e.target.value)}
                         style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
                       />
+                      <label style={{ cursor: 'pointer', padding: '6px 12px', fontSize: '0.8rem', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '6px', fontWeight: '600' }}>
+                        + Upload Excel
+                        <input type="file" accept=".xlsx, .xls, .csv" onChange={handleWardenFileUpload} style={{ display: 'none' }} />
+                      </label>
                       <button onClick={addWarden} style={{ padding: '6px 12px', fontSize: '0.8rem', background: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', cursor: 'pointer', borderRadius: '6px', fontWeight: '600' }}>+ Add Warden</button>
                       <button onClick={addSupportStaff} style={{ padding: '6px 12px', fontSize: '0.8rem', background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', cursor: 'pointer', borderRadius: '6px', fontWeight: '600' }}>+ Add Support Staff</button>
+                      <button onClick={(e) => {
+                        e.preventDefault();
+                        if (window.confirm("Are you sure you want to remove ALL staff members?")) {
+                          if (window.confirm("This action cannot be undone. Please confirm again to delete ALL staff.")) {
+                            setCurrentBlockData(prev => ({ ...prev, wardens: [] }));
+                          }
+                        }
+                      }} style={{ padding: '6px 12px', fontSize: '0.8rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', cursor: 'pointer', borderRadius: '6px', fontWeight: '600' }}>Delete All</button>
                     </div>
                   </div>
                   {(!currentBlockData.wardens || currentBlockData.wardens.length === 0) ? (
@@ -2917,7 +3735,19 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                         onChange={(e) => setResidentSearchQuery(e.target.value)}
                         style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
                       />
+                      <label style={{ cursor: 'pointer', padding: '6px 12px', fontSize: '0.8rem', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '6px', fontWeight: '600' }}>
+                        + Upload Excel
+                        <input type="file" accept=".xlsx, .xls, .csv" onChange={handleResidentFileUpload} style={{ display: 'none' }} />
+                      </label>
                       <button onClick={addResident} style={{ padding: '6px 12px', fontSize: '0.8rem', background: '#f5f3ff', color: '#6d28d9', border: '1px solid #ddd6fe', cursor: 'pointer', borderRadius: '6px', fontWeight: '600' }}>+ Add Student</button>
+                      <button onClick={(e) => {
+                        e.preventDefault();
+                        if (window.confirm("Are you sure you want to remove ALL students?")) {
+                          if (window.confirm("This action cannot be undone. Please confirm again to delete ALL students.")) {
+                            setCurrentBlockData(prev => ({ ...prev, residentList: [] }));
+                          }
+                        }
+                      }} style={{ padding: '6px 12px', fontSize: '0.8rem', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', cursor: 'pointer', borderRadius: '6px', fontWeight: '600' }}>Delete All</button>
                     </div>
                   </div>
                   {(!currentBlockData.residentList || currentBlockData.residentList.length === 0) ? (
@@ -2977,6 +3807,423 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             )}
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (unitName === 'Power House') {
+    const handlePhDynamicChange = (setter, idx, field, val) => {
+      setter(prev => {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], [field]: val };
+        return copy;
+      });
+    };
+
+    const handlePhStaticChange = (setter, idx, field, val) => {
+      setter(prev => {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], [field]: val };
+        return copy;
+      });
+    };
+
+    const addPhStaticRow = (setter, emptyObj) => {
+      setter(prev => [...prev, emptyObj]);
+    };
+
+    const removePhStaticRow = (setter, idx) => {
+      setter(prev => prev.filter((_, i) => i !== idx));
+    };
+
+    const savePhData = async () => {
+      setPhSaving(true);
+      setPhSavedMsg('');
+      try {
+        const payload = {
+          date: phDate,
+          transformers: phTransformers,
+          dgSets: phDGSets,
+          ups: phUps,
+          solarPv: phSolarPv,
+          staff: phStaff,
+          ebDynamic: ebDynamic,
+          solarDynamic: solarDynamic,
+          dgDynamic: dgDynamic,
+          dgDailyFuel: parseFloat(dgDailyFuel) || 0
+        };
+        const res = await fetch('http://localhost:8085/api/powerhouse/data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error('Network response was not ok');
+        setPhSavedMsg('Power House data saved successfully!');
+        window.dispatchEvent(new Event('unit-form-updated'));
+        setTimeout(() => setPhSavedMsg(''), 3000);
+      } catch (err) {
+        console.error(err);
+        setPhSavedMsg('Failed to save data');
+      } finally {
+        setPhSaving(false);
+      }
+    };
+
+    return (
+      <div className="unit-form-card" style={{ padding: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <div>
+            <h2 style={{ margin: '0 0 8px 0', color: '#0f172a' }}>Power House Details Update</h2>
+            <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>Manage static inventory and dynamic hourly consumption logs.</p>
+          </div>
+          {phSavedMsg && (
+            <div style={{ padding: '8px 16px', background: phSavedMsg.includes('Failed') ? '#fee2e2' : '#dcfce7', color: phSavedMsg.includes('Failed') ? '#991b1b' : '#166534', borderRadius: '8px', fontWeight: 600, fontSize: '0.9rem' }}>
+              {phSavedMsg}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+          {['static', 'eb_dynamic', 'solar_dynamic', 'dg_dynamic'].map(tab => (
+            <button
+              key={tab}
+              onClick={() => setPhTab(tab)}
+              style={{
+                padding: '8px 16px',
+                background: phTab === tab ? '#1e293b' : '#f1f5f9',
+                color: phTab === tab ? '#fff' : '#475569',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+                fontSize: '0.8rem'
+              }}
+            >
+              {tab.replace('_', ' ')}
+            </button>
+          ))}
+        </div>
+
+        {phTab === 'static' && (
+          <div>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+              {[
+                { id: 'ebTransformer', label: 'EB Transformer' },
+                { id: 'dgSets', label: 'DG Sets' },
+                { id: 'ups', label: 'UPS / Battery' },
+                { id: 'solarPv', label: 'Solar PV Plant' },
+                { id: 'staff', label: 'Staff' }
+              ].map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setPhStaticTab(t.id)}
+                  style={{
+                    padding: '6px 14px',
+                    background: phStaticTab === t.id ? '#3b82f6' : '#fff',
+                    color: phStaticTab === t.id ? '#fff' : '#64748b',
+                    border: '1px solid',
+                    borderColor: phStaticTab === t.id ? '#3b82f6' : '#cbd5e1',
+                    borderRadius: '999px',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {phStaticTab === 'ebTransformer' && (
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h4 style={{ margin: 0, color: '#1e293b' }}>EB Transformers</h4>
+                  <label style={{ cursor: 'pointer', padding: '6px 12px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '6px', fontWeight: 600, fontSize: '0.8rem' }}>
+                    + Upload Excel
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setPhTransformers, { svcNum: '', type: 'Permanent HT', load: '', voltage: '11 kV HT / 415 V LT', ratingMake: '', year: '', feeders: '' }, e)} style={{ display: 'none' }} />
+                  </label>
+                </div>
+                {phTransformers.map((item, idx) => (
+                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px', padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid #cbd5e1', position: 'relative' }}>
+                    {phTransformers.length > 1 && (
+                      <button onClick={() => removePhStaticRow(setPhTransformers, idx)} style={{ position: 'absolute', top: '8px', right: '8px', background: '#fee2e2', color: '#ef4444', border: 'none', width: '24px', height: '24px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold' }}>&times;</button>
+                    )}
+                    <FieldBox label="Service connection number">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.svcNum} onChange={e => handlePhStaticChange(setPhTransformers, idx, 'svcNum', e.target.value)} placeholder="e.g. 49094360091" />
+                    </FieldBox>
+                    <FieldBox label="Service Type">
+                      <select style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.type} onChange={e => handlePhStaticChange(setPhTransformers, idx, 'type', e.target.value)}>
+                        <option value="Permanent HT">Permanent HT</option>
+                        <option value="Temporary LT">Temporary LT</option>
+                      </select>
+                    </FieldBox>
+                    <FieldBox label="Sanctioned load / Demand">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.load} onChange={e => handlePhStaticChange(setPhTransformers, idx, 'load', e.target.value)} placeholder="e.g. 1675 KVA" />
+                    </FieldBox>
+                    <FieldBox label="Supply voltage (HT/LT)">
+                      <select style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.voltage} onChange={e => handlePhStaticChange(setPhTransformers, idx, 'voltage', e.target.value)}>
+                        <option value="11 kV HT / 415 V LT">11 kV HT / 415 V LT</option>
+                        <option value="415 V LT / 230 V LT">415 V LT / 230 V LT</option>
+                      </select>
+                    </FieldBox>
+                    <FieldBox label="Transformer rating & make">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.ratingMake} onChange={e => handlePhStaticChange(setPhTransformers, idx, 'ratingMake', e.target.value)} placeholder="e.g. 600KVA & EESNAR" />
+                    </FieldBox>
+                    <FieldBox label="Installation year">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.year} onChange={e => handlePhStaticChange(setPhTransformers, idx, 'year', e.target.value)} placeholder="e.g. 2023" />
+                    </FieldBox>
+                    <FieldBox label="Number of feeders">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.feeders} onChange={e => handlePhStaticChange(setPhTransformers, idx, 'feeders', e.target.value)} placeholder="e.g. 10" />
+                    </FieldBox>
+                  </div>
+                ))}
+                <button onClick={() => addPhStaticRow(setPhTransformers, { svcNum: '', type: 'Permanent HT', load: '', voltage: '11 kV HT / 415 V LT', ratingMake: '', year: '', feeders: '' })} style={{ padding: '8px 16px', background: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}>+ Add Transformer</button>
+              </div>
+            )}
+
+            {phStaticTab === 'dgSets' && (
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h4 style={{ margin: 0, color: '#1e293b' }}>Diesel Generators (DG)</h4>
+                  <label style={{ cursor: 'pointer', padding: '6px 12px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '6px', fontWeight: 600, fontSize: '0.8rem' }}>
+                    + Upload Excel
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setPhDGSets, { ratingMake: '', count: '', year: '', lastService: '', fuelCap: '', status: 'Working' }, e)} style={{ display: 'none' }} />
+                  </label>
+                </div>
+                {phDGSets.map((item, idx) => (
+                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px', padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid #cbd5e1', position: 'relative' }}>
+                    {phDGSets.length > 1 && (
+                      <button onClick={() => removePhStaticRow(setPhDGSets, idx)} style={{ position: 'absolute', top: '8px', right: '8px', background: '#fee2e2', color: '#ef4444', border: 'none', width: '24px', height: '24px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold' }}>&times;</button>
+                    )}
+                    <FieldBox label="DG set rating & make">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.ratingMake} onChange={e => handlePhStaticChange(setPhDGSets, idx, 'ratingMake', e.target.value)} placeholder="e.g. 750 KVA" />
+                    </FieldBox>
+                    <FieldBox label="Number of DG sets">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.count} onChange={e => handlePhStaticChange(setPhDGSets, idx, 'count', e.target.value)} placeholder="e.g. 1 nos" />
+                    </FieldBox>
+                    <FieldBox label="Installation date">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.year} onChange={e => handlePhStaticChange(setPhDGSets, idx, 'year', e.target.value)} placeholder="e.g. 2009" />
+                    </FieldBox>
+                    <FieldBox label="Last service date">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.lastService} onChange={e => handlePhStaticChange(setPhDGSets, idx, 'lastService', e.target.value)} placeholder="e.g. 04.05.2025" />
+                    </FieldBox>
+                    <FieldBox label="Fuel tank capacity">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.fuelCap} onChange={e => handlePhStaticChange(setPhDGSets, idx, 'fuelCap', e.target.value)} placeholder="e.g. 1000 ltrs" />
+                    </FieldBox>
+                    <FieldBox label="Working Status">
+                      <select style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.status} onChange={e => handlePhStaticChange(setPhDGSets, idx, 'status', e.target.value)}>
+                        <option value="Working">Working</option>
+                        <option value="Not Working">Not Working</option>
+                      </select>
+                    </FieldBox>
+                  </div>
+                ))}
+                <button onClick={() => addPhStaticRow(setPhDGSets, { ratingMake: '', count: '', year: '', lastService: '', fuelCap: '', status: 'Working' })} style={{ padding: '8px 16px', background: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}>+ Add DG Set</button>
+              </div>
+            )}
+
+            {phStaticTab === 'ups' && (
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h4 style={{ margin: 0, color: '#1e293b' }}>UPS / Battery</h4>
+                  <label style={{ cursor: 'pointer', padding: '6px 12px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '6px', fontWeight: 600, fontSize: '0.8rem' }}>
+                    + Upload Excel
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setPhUps, { location: '', ratingMake: '', lastAmc: '', nextAmc: '', batteryCap: '', batteryDate: '', status: 'Working' }, e)} style={{ display: 'none' }} />
+                  </label>
+                </div>
+                {phUps.map((item, idx) => (
+                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px', padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid #cbd5e1', position: 'relative' }}>
+                    {phUps.length > 1 && (
+                      <button onClick={() => removePhStaticRow(setPhUps, idx)} style={{ position: 'absolute', top: '8px', right: '8px', background: '#fee2e2', color: '#ef4444', border: 'none', width: '24px', height: '24px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold' }}>&times;</button>
+                    )}
+                    <FieldBox label="Location">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.location} onChange={e => handlePhStaticChange(setPhUps, idx, 'location', e.target.value)} placeholder="e.g. PRINCIPAL OFFICE" />
+                    </FieldBox>
+                    <FieldBox label="UPS rating & make">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.ratingMake} onChange={e => handlePhStaticChange(setPhUps, idx, 'ratingMake', e.target.value)} placeholder="e.g. 30 KVA & Neumaric" />
+                    </FieldBox>
+                    <FieldBox label="Last AMC date">
+                      <input type="date" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.lastAmc} onChange={e => handlePhStaticChange(setPhUps, idx, 'lastAmc', e.target.value)} />
+                    </FieldBox>
+                    <FieldBox label="Next AMC date">
+                      <input type="date" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.nextAmc} onChange={e => handlePhStaticChange(setPhUps, idx, 'nextAmc', e.target.value)} />
+                    </FieldBox>
+                    <FieldBox label="Battery capacity">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.batteryCap} onChange={e => handlePhStaticChange(setPhUps, idx, 'batteryCap', e.target.value)} placeholder="e.g. 100 Ah & 30 Nos" />
+                    </FieldBox>
+                    <FieldBox label="Installation date">
+                      <input type="date" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.batteryDate} onChange={e => handlePhStaticChange(setPhUps, idx, 'batteryDate', e.target.value)} />
+                    </FieldBox>
+                    <FieldBox label="Working Status">
+                      <select style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.status} onChange={e => handlePhStaticChange(setPhUps, idx, 'status', e.target.value)}>
+                        <option value="Working">Working</option>
+                        <option value="Not Working">Not Working</option>
+                      </select>
+                    </FieldBox>
+                  </div>
+                ))}
+                <button onClick={() => addPhStaticRow(setPhUps, { location: '', ratingMake: '', lastAmc: '', nextAmc: '', batteryCap: '', batteryDate: '', status: 'Working' })} style={{ padding: '8px 16px', background: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}>+ Add UPS Unit</button>
+              </div>
+            )}
+
+            {phStaticTab === 'solarPv' && (
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h4 style={{ margin: 0, color: '#1e293b' }}>Roof Top Solar PV Plant</h4>
+                  <label style={{ cursor: 'pointer', padding: '6px 12px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '6px', fontWeight: 600, fontSize: '0.8rem' }}>
+                    + Upload Excel
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setPhSolarPv, { location: '', capacity: '', panels: '', panelWatts: '', inverterRating: '', inverterService: '', type: 'Local Grid usage', cleaningFreq: 'yes', status: 'Working' }, e)} style={{ display: 'none' }} />
+                  </label>
+                </div>
+                {phSolarPv.map((item, idx) => (
+                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px', padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid #cbd5e1', position: 'relative' }}>
+                    {phSolarPv.length > 1 && (
+                      <button onClick={() => removePhStaticRow(setPhSolarPv, idx)} style={{ position: 'absolute', top: '8px', right: '8px', background: '#fee2e2', color: '#ef4444', border: 'none', width: '24px', height: '24px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold' }}>&times;</button>
+                    )}
+                    <FieldBox label="Location">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.location} onChange={e => handlePhStaticChange(setPhSolarPv, idx, 'location', e.target.value)} placeholder="e.g. Textile lab 1" />
+                    </FieldBox>
+                    <FieldBox label="Capacity (kWp)">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.capacity} onChange={e => handlePhStaticChange(setPhSolarPv, idx, 'capacity', e.target.value)} placeholder="e.g. 50KW" />
+                    </FieldBox>
+                    <FieldBox label="Number of panels">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.panels} onChange={e => handlePhStaticChange(setPhSolarPv, idx, 'panels', e.target.value)} placeholder="e.g. 216 nos" />
+                    </FieldBox>
+                    <FieldBox label="Panel Watts">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.panelWatts} onChange={e => handlePhStaticChange(setPhSolarPv, idx, 'panelWatts', e.target.value)} placeholder="e.g. 235 W" />
+                    </FieldBox>
+                    <FieldBox label="Inverter rating">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.inverterRating} onChange={e => handlePhStaticChange(setPhSolarPv, idx, 'inverterRating', e.target.value)} placeholder="e.g. 100 KW" />
+                    </FieldBox>
+                    <FieldBox label="Inverter Service date">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.inverterService} onChange={e => handlePhStaticChange(setPhSolarPv, idx, 'inverterService', e.target.value)} placeholder="e.g. 03.12.2025" />
+                    </FieldBox>
+                    <FieldBox label="Type">
+                      <select style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.type} onChange={e => handlePhStaticChange(setPhSolarPv, idx, 'type', e.target.value)}>
+                        <option value="Local Grid usage">Local Grid usage</option>
+                        <option value="Grid Connected">Grid Connected</option>
+                        <option value="Off Grid with Battery storage">Off Grid with Battery storage</option>
+                      </select>
+                    </FieldBox>
+                    <FieldBox label="Cleaning Frequency">
+                      <select style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.cleaningFreq} onChange={e => handlePhStaticChange(setPhSolarPv, idx, 'cleaningFreq', e.target.value)}>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </FieldBox>
+                    <FieldBox label="Working Status">
+                      <select style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.status} onChange={e => handlePhStaticChange(setPhSolarPv, idx, 'status', e.target.value)}>
+                        <option value="Working">Working</option>
+                        <option value="Not Working">Not Working</option>
+                      </select>
+                    </FieldBox>
+                  </div>
+                ))}
+                <button onClick={() => addPhStaticRow(setPhSolarPv, { location: '', capacity: '', panels: '', panelWatts: '', inverterRating: '', inverterService: '', type: 'Local Grid usage', cleaningFreq: 'yes', status: 'Working' })} style={{ padding: '8px 16px', background: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}>+ Add Solar Plant</button>
+              </div>
+            )}
+
+            {phStaticTab === 'staff' && (
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <h4 style={{ margin: 0, color: '#1e293b' }}>Power House Staff</h4>
+                  <label style={{ cursor: 'pointer', padding: '6px 12px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '6px', fontWeight: 600, fontSize: '0.8rem' }}>
+                    + Upload Excel
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setPhStaff, { name: '', role: '', shift: 'Morning', attendance: 'Present', contact: '' }, e)} style={{ display: 'none' }} />
+                  </label>
+                </div>
+                {phStaff.map((item, idx) => (
+                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px', padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid #cbd5e1', position: 'relative' }}>
+                    {phStaff.length > 1 && (
+                      <button onClick={() => removePhStaticRow(setPhStaff, idx)} style={{ position: 'absolute', top: '8px', right: '8px', background: '#fee2e2', color: '#ef4444', border: 'none', width: '24px', height: '24px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold' }}>&times;</button>
+                    )}
+                    <FieldBox label="Staff Name">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.name} onChange={e => handlePhStaticChange(setPhStaff, idx, 'name', e.target.value)} placeholder="Name" />
+                    </FieldBox>
+                    <FieldBox label="Role / Designation">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.role} onChange={e => handlePhStaticChange(setPhStaff, idx, 'role', e.target.value)} placeholder="e.g. Chief Operator" />
+                    </FieldBox>
+                    <FieldBox label="Shift">
+                      <select style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.shift} onChange={e => handlePhStaticChange(setPhStaff, idx, 'shift', e.target.value)}>
+                        <option value="Morning">Morning</option>
+                        <option value="Evening">Evening</option>
+                        <option value="Night">Night</option>
+                        <option value="General">General</option>
+                      </select>
+                    </FieldBox>
+
+                    <FieldBox label="Contact Info">
+                      <input type="text" style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }} value={item.contact} onChange={e => handlePhStaticChange(setPhStaff, idx, 'contact', e.target.value)} placeholder="Phone" />
+                    </FieldBox>
+                  </div>
+                ))}
+                <button onClick={() => addPhStaticRow(setPhStaff, { name: '', role: '', shift: 'Morning', attendance: 'Present', contact: '' })} style={{ padding: '8px 16px', background: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}>+ Add Staff</button>
+              </div>
+            )}
+
+            <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={savePhData} disabled={phSaving} style={{ padding: '10px 24px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', opacity: phSaving ? 0.7 : 1 }}>
+                {phSaving ? 'Saving...' : 'Save Static Data'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {['eb_dynamic', 'solar_dynamic', 'dg_dynamic'].includes(phTab) && (() => {
+          const isEB = phTab === 'eb_dynamic';
+          const isSolar = phTab === 'solar_dynamic';
+          const isDG = phTab === 'dg_dynamic';
+          const title = isEB ? 'EB Dynamic Logs (Hourly Consumption)' : isSolar ? 'Solar Dynamic Logs (Hourly Generation/Consumption)' : 'DG Dynamic Logs (Hourly Consumption & Daily Fuel)';
+          const dataArray = isEB ? ebDynamic : isSolar ? solarDynamic : dgDynamic;
+          const setter = isEB ? setEbDynamic : isSolar ? setSolarDynamic : setDgDynamic;
+
+          const excelMapping = isSolar ? { hour: '', value: '', generation: '' } : { hour: '', value: '' };
+
+          return (
+            <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <h4 style={{ margin: 0, color: '#1e293b' }}>{title}</h4>
+                  <label style={{ cursor: 'pointer', padding: '6px 12px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', borderRadius: '6px', fontWeight: 600, fontSize: '0.8rem' }}>
+                    + Upload Excel
+                    <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setter, excelMapping, e)} style={{ display: 'none' }} />
+                  </label>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                  {isDG && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#ea580c' }}>Daily Fuel Usage (Liters):</label>
+                      <input type="number" placeholder="Total" value={dgDailyFuel} onChange={e => setDgDailyFuel(e.target.value)} style={{ padding: '4px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', width: '80px', fontSize: '0.85rem' }} />
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>Date:</label>
+                    <input type="date" value={phDate} onChange={e => setPhDate(e.target.value)} style={{ padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                {dataArray.map((slot, idx) => (
+                  <div key={idx} style={{ background: '#fff', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#3b82f6', width: '40px' }}>{slot.hour}</div>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <input type="number" placeholder="Consumption (Units)" style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem', boxSizing: 'border-box' }} value={slot.value || ''} onChange={e => handlePhDynamicChange(setter, idx, 'value', e.target.value)} />
+                      {isSolar && (
+                        <input type="number" placeholder="Generation (Units)" style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem', boxSizing: 'border-box' }} value={slot.generation || ''} onChange={e => handlePhDynamicChange(setter, idx, 'generation', e.target.value)} />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end' }}>
+                <button onClick={savePhData} disabled={phSaving} style={{ padding: '10px 24px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', opacity: phSaving ? 0.7 : 1 }}>
+                  {phSaving ? 'Saving...' : 'Save Dynamic Logs'}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   }

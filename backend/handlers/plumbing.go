@@ -34,12 +34,14 @@ func (h *APIHandler) GetPlumbing(w http.ResponseWriter, r *http.Request) {
 	var ohts []models.PlumbingOHT
 	var manpower []models.PlumbingManpower
 	var runtimes []models.PlumbingRuntimeLog
+	var riverIntakes []models.PlumbingRiverIntakeLog
 
 	h.DB.Find(&motors)
 	h.DB.Find(&sumps)
 	h.DB.Find(&ohts)
 	h.DB.Find(&manpower)
 	h.DB.Find(&runtimes)
+	h.DB.Find(&riverIntakes)
 
 	for i := range motors {
 		var hp float64
@@ -69,11 +71,12 @@ func (h *APIHandler) GetPlumbing(w http.ResponseWriter, r *http.Request) {
 	}
 
 	payload := map[string]interface{}{
-		"motors":   motors,
-		"sumps":    sumps,
-		"ohts":     ohts,
-		"manpower": manpower,
-		"runtimes": runtimes,
+		"motors":       motors,
+		"sumps":        sumps,
+		"ohts":         ohts,
+		"manpower":     manpower,
+		"runtimes":     runtimes,
+		"riverIntakes": riverIntakes,
 	}
 	jsonData, err := json.Marshal(payload)
 	if err == nil {
@@ -104,7 +107,7 @@ func (h *APIHandler) AddPlumbingMotors(w http.ResponseWriter, r *http.Request) {
 	var data []models.PlumbingMotor
 	if err := json.NewDecoder(r.Body).Decode(&data); err == nil {
 		for _, v := range data {
-			h.DB.Create(&v)
+			h.DB.Save(&v)
 		}
 	}
 	w.WriteHeader(http.StatusOK)
@@ -140,7 +143,7 @@ func (h *APIHandler) AddPlumbingSumps(w http.ResponseWriter, r *http.Request) {
 	var data []models.PlumbingSump
 	if err := json.NewDecoder(r.Body).Decode(&data); err == nil {
 		for _, v := range data {
-			h.DB.Create(&v)
+			h.DB.Save(&v)
 		}
 	}
 	w.WriteHeader(http.StatusOK)
@@ -176,7 +179,7 @@ func (h *APIHandler) AddPlumbingOHTs(w http.ResponseWriter, r *http.Request) {
 	var data []models.PlumbingOHT
 	if err := json.NewDecoder(r.Body).Decode(&data); err == nil {
 		for _, v := range data {
-			h.DB.Create(&v)
+			h.DB.Save(&v)
 		}
 	}
 	w.WriteHeader(http.StatusOK)
@@ -212,7 +215,7 @@ func (h *APIHandler) AddPlumbingManpower(w http.ResponseWriter, r *http.Request)
 	var data []models.PlumbingManpower
 	if err := json.NewDecoder(r.Body).Decode(&data); err == nil {
 		for _, v := range data {
-			h.DB.Create(&v)
+			h.DB.Save(&v)
 		}
 	}
 	w.WriteHeader(http.StatusOK)
@@ -352,4 +355,34 @@ func (h *APIHandler) Plumbing() {
 			h.DB.Create(&o)
 		}
 	}
+}
+
+func (h *APIHandler) AddPlumbingRiverIntake(w http.ResponseWriter, r *http.Request) {
+	PlumbingCache.mu.Lock()
+	PlumbingCache.data = nil
+	PlumbingCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	var data []models.PlumbingRiverIntakeLog
+	if err := json.NewDecoder(r.Body).Decode(&data); err == nil {
+		for _, v := range data {
+			var existing models.PlumbingRiverIntakeLog
+			if h.DB.Where("date = ?", v.Date).First(&existing).Error == nil {
+				existing.Intake = v.Intake
+				existing.Remarks = v.Remarks
+				h.DB.Save(&existing)
+			} else {
+				h.DB.Save(&v)
+			}
+		}
+	} else {
+		http.Error(w, "Invalid payload", http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }

@@ -749,6 +749,8 @@ export default function ChillerPlantDetail() {
               type="date"
               value={selectedOpDate} 
               onChange={(e) => setSelectedOpDate(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
               style={{ padding: '5px 12px', borderRadius: '20px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', fontWeight: 700, fontSize: '0.8rem', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
             />
             <span style={{ background: '#dcfce7', color: '#166534', fontSize: '0.8rem', fontWeight: 700, padding: '6px 12px', borderRadius: '20px' }}>
@@ -1739,9 +1741,6 @@ export default function ChillerPlantDetail() {
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 850, color: '#0f172a' }}>{member.name}</h4>
-                      <span style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: '4px', fontWeight: 800, background: member.attendance === 'Present' ? '#dcfce7' : '#fee2e2', color: member.attendance === 'Present' ? '#166534' : '#991b1b' }}>
-                        {member.attendance}
-                      </span>
                     </div>
                     <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>{member.role} • {member.shift}</div>
                     <div style={{ borderTop: '1px dashed #cbd5e1', marginTop: '8px', paddingTop: '6px', display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#475569' }}>

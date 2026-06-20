@@ -201,8 +201,10 @@ export default function MessDetail() {
   const [selectedBlockEquip, setSelectedBlockEquip] = useState('Boys Hostel');
   const [equipSearch, setEquipSearch] = useState('');
   const [equipFilterStatus, setEquipFilterStatus] = useState('all');
-  const [showAddEquipModal, setShowAddEquipModal] = useState(false);
-  const [newEquip, setNewEquip] = useState({ name: '', total: 1, working: 1, damaged: 0, status: 'Working' });
+
+  const [staffList, setStaffList] = useState({});
+  const [selectedBlockStaff, setSelectedBlockStaff] = useState('Boys Hostel');
+  const [staffSearch, setStaffSearch] = useState('');
 
   const [wasteLogs, setWasteLogs] = useState({});
   const [selectedBlockWaste, setSelectedBlockWaste] = useState('Boys Hostel');
@@ -241,6 +243,15 @@ export default function MessDetail() {
               groupedEquip[e.blockName].push(e);
             });
             setEquipmentList(groupedEquip);
+          }
+
+          if (data.staff) {
+            const groupedStaff = { 'Boys Day Scholar': [], 'Boys Hostel': [], 'Girls': [] };
+            data.staff.forEach(s => {
+              if (!groupedStaff[s.blockName]) groupedStaff[s.blockName] = [];
+              groupedStaff[s.blockName].push(s);
+            });
+            setStaffList(groupedStaff);
           }
 
           let groupedLogs = generateWasteLogs();
@@ -290,15 +301,52 @@ export default function MessDetail() {
   const [compBlockRight, setCompBlockRight] = useState('Girls');
   const [compWeeklyMonth, setCompWeeklyMonth] = useState('May 2026');
   const [compFacilityMonth, setCompFacilityMonth] = useState('May 2026');
+  const [compDayOfWeekMonth, setCompDayOfWeekMonth] = useState('May 2026');
 
   // --- Month selector State ---
   const [selectedReportMonth, setSelectedReportMonth] = useState('May 2026');
 
+  const availableMonths = useMemo(() => {
+    const months = new Set();
+    Object.values(wasteLogs).forEach(logs => {
+      logs.forEach(l => {
+        if (!l.date) return;
+        const d = new Date(l.date);
+        if (!isNaN(d.getTime())) {
+          months.add(d.toLocaleString('default', { month: 'long', year: 'numeric' }));
+        }
+      });
+    });
+    const arr = Array.from(months);
+    if (arr.length === 0) arr.push('May 2026');
+    return arr.sort((a, b) => new Date(b) - new Date(a));
+  }, [wasteLogs]);
+
+  useEffect(() => {
+    if (availableMonths.length > 0) {
+      if (!availableMonths.includes(analyticsMonth)) setAnalyticsMonth(availableMonths[0]);
+      if (!availableMonths.includes(compWeeklyMonth)) setCompWeeklyMonth(availableMonths[0]);
+      if (!availableMonths.includes(compFacilityMonth)) setCompFacilityMonth(availableMonths[0]);
+      if (!availableMonths.includes(compDayOfWeekMonth)) setCompDayOfWeekMonth(availableMonths[0]);
+      if (!availableMonths.includes(selectedReportMonth)) setSelectedReportMonth(availableMonths[0]);
+    }
+  }, [availableMonths, analyticsMonth, compWeeklyMonth, compFacilityMonth, compDayOfWeekMonth, selectedReportMonth]);
+
+  const getLogsForMonth = (blockName, monthStr) => {
+    const logs = wasteLogs[blockName] || [];
+    return logs.filter(l => {
+      if (!l.date) return false;
+      const d = new Date(l.date);
+      if (isNaN(d.getTime())) return false;
+      return d.toLocaleString('default', { month: 'long', year: 'numeric' }) === monthStr;
+    });
+  };
+
   // Helper to filter dates matching selected day of the week
   const filteredCompDates = useMemo(() => {
-    const logs = wasteLogs[selectedBlockWaste] || [];
-    return logs.filter(l => l.dayOfWeek === compDayOfWeek);
-  }, [wasteLogs, selectedBlockWaste, compDayOfWeek]);
+    const logs = getLogsForMonth(selectedBlockWaste, compDayOfWeekMonth);
+    return logs.filter(l => l.dayOfWeek === compDayOfWeek).sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [wasteLogs, selectedBlockWaste, compDayOfWeek, compDayOfWeekMonth]);
 
   // -------------------------------------------------------------
   // HANDLERS
@@ -441,61 +489,7 @@ export default function MessDetail() {
     }
   };
 
-  const handleQuickStatusAdjust = (blockName, equipId, deltaWorking, deltaDamaged) => {
-    const updatedList = { ...equipmentList };
-    const items = [...updatedList[blockName]];
-    const idx = items.findIndex(e => e.id === equipId);
-    if (idx > -1) {
-      const item = { ...items[idx] };
-      item.working = Math.max(0, item.working + deltaWorking);
-      item.damaged = Math.max(0, item.damaged + deltaDamaged);
-      item.total = item.working + item.damaged;
 
-      // Automatically recalculate status
-      if (item.damaged === 0) {
-        item.status = 'Working';
-      } else if (item.working === 0) {
-        item.status = 'Not Working';
-      } else if (item.damaged > 0 && item.working > 0) {
-        // Simple logic: if more than 30% damaged, Under Maintenance, else Partial Working
-        if ((item.damaged / item.total) > 0.3) {
-          item.status = 'Under Maintenance';
-        } else {
-          item.status = 'Partial Working';
-        }
-      }
-      items[idx] = item;
-      updatedList[blockName] = items;
-      setEquipmentList(updatedList);
-    }
-  };
-
-  const handleAddEquipment = (e) => {
-    e.preventDefault();
-    if (!newEquip.name.trim()) return;
-
-    const total = parseInt(newEquip.working) + parseInt(newEquip.damaged);
-    let status = newEquip.status;
-    if (newEquip.damaged === 0) status = 'Working';
-    else if (newEquip.working === 0) status = 'Not Working';
-
-    const newItem = {
-      id: Date.now(),
-      name: newEquip.name,
-      total,
-      working: parseInt(newEquip.working) || 0,
-      damaged: parseInt(newEquip.damaged) || 0,
-      status,
-    };
-
-    setEquipmentList(prev => ({
-      ...prev,
-      [selectedBlockEquip]: [...prev[selectedBlockEquip], newItem],
-    }));
-
-    setNewEquip({ name: '', total: 1, working: 1, damaged: 0, status: 'Working' });
-    setShowAddEquipModal(false);
-  };
 
   // -------------------------------------------------------------
   // COMPUTED ANALYTICS / DATASOURCES
@@ -511,11 +505,20 @@ export default function MessDetail() {
     });
   }, [equipmentList, selectedBlockEquip, equipSearch, equipFilterStatus]);
 
+  // Filtered Staff List
+  const filteredStaff = useMemo(() => {
+    const list = staffList[selectedBlockStaff] || [];
+    return list.filter(item => {
+      return item.name.toLowerCase().includes(staffSearch.toLowerCase()) || 
+             item.role.toLowerCase().includes(staffSearch.toLowerCase());
+    });
+  }, [staffList, selectedBlockStaff, staffSearch]);
+
   // (Helper functions moved outside of component body)
 
   // Recharts: Day-wise food waste chart data
   const dayWiseWasteChartData = useMemo(() => {
-    const logs = wasteLogs[selectedBlockWaste] || [];
+    const logs = getLogsForMonth(selectedBlockWaste, analyticsMonth);
     const occ = (blocks.find(b => b.name === selectedBlockWaste) || {}).occupied || 1;
     return logs.map(l => {
       let bCount = l.breakfastCount > 0 ? l.breakfastCount : occ;
@@ -539,11 +542,11 @@ export default function MessDetail() {
         SelectedValue: Math.round((val * 1000) / vCount),
       };
     });
-  }, [wasteLogs, selectedBlockWaste, blocks, analyticsMeal]);
+  }, [wasteLogs, selectedBlockWaste, blocks, analyticsMeal, analyticsMonth]);
 
   // Recharts: Week-wise comparison chart data
   const weekWiseChartData = useMemo(() => {
-    const logs = wasteLogs[selectedBlockWaste] || [];
+    const logs = getLogsForMonth(selectedBlockWaste, analyticsMonth);
     const weeks = [
       { name: 'Week 1 (1-7)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, bCountSum: 0, lCountSum: 0, dCountSum: 0, count: 0 },
       { name: 'Week 2 (8-14)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, bCountSum: 0, lCountSum: 0, dCountSum: 0, count: 0 },
@@ -593,20 +596,20 @@ export default function MessDetail() {
         SelectedValue: Math.round(((val / (w.count || 1)) * 1000) / (vCount || 1)),
       };
     });
-  }, [wasteLogs, selectedBlockWaste, blocks, analyticsMeal]);
+  }, [wasteLogs, selectedBlockWaste, blocks, analyticsMeal, analyticsMonth]);
 
   // Recharts: Block-wise comparison (Total Waste for May)
   const blockComparisonData = useMemo(() => {
     return Object.keys(wasteLogs).map(blockName => {
-      const logs = wasteLogs[blockName] || [];
+      const logs = getLogsForMonth(blockName, analyticsMonth);
       const total = logs.reduce((acc, curr) => acc + curr.total, 0);
       return { name: blockName, value: total };
     });
-  }, [wasteLogs]);
+  }, [wasteLogs, analyticsMonth]);
 
   // Recharts: Meal-wise total waste analysis
   const mealWiseWasteData = useMemo(() => {
-    let logs = wasteLogs[selectedBlockWaste] || [];
+    let logs = getLogsForMonth(selectedBlockWaste, analyticsMonth);
     if (analyticsPieDay !== 'All Month') {
       logs = logs.filter(l => l.date === analyticsPieDay);
     }
@@ -627,17 +630,32 @@ export default function MessDetail() {
       { name: 'Lunch', value: Math.round(((lTotal / days) * 1000) / (lCountSum / days || 1)) },
       { name: 'Dinner', value: Math.round(((dTotal / days) * 1000) / (dCountSum / days || 1)) },
     ];
-  }, [wasteLogs, selectedBlockWaste, blocks, analyticsPieDay]);
+  }, [wasteLogs, selectedBlockWaste, blocks, analyticsPieDay, analyticsMonth]);
 
   // Day of Week Comparison Calculation
   const dayOfWeekComparisonResult = useMemo(() => {
     const logs = wasteLogs[selectedBlockWaste] || [];
-    const leftRec = logs.find(l => l.date === compDateLeft);
-    const rightRec = logs.find(l => l.date === compDateRight);
+    
+    const getEmptyRec = (dateStr) => {
+      const d = new Date(dateStr);
+      return {
+        date: dateStr,
+        dayNum: d.getDate() || 1,
+        dayOfWeek: isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { weekday: 'short' }),
+        breakfast: 0, lunch: 0, dinner: 0, total: 0
+      };
+    };
 
-    if (!leftRec || !rightRec) return null;
+    let leftRec = logs.find(l => l.date === compDateLeft);
+    let rightRec = logs.find(l => l.date === compDateRight);
+
+    if (!compDateLeft || !compDateRight) return null;
+    
+    if (!leftRec) leftRec = getEmptyRec(compDateLeft);
+    if (!rightRec) rightRec = getEmptyRec(compDateRight);
+
     const diff = leftRec.total - rightRec.total;
-    const pct = rightRec.total > 0 ? Math.round((diff / rightRec.total) * 100) : 0;
+    const pct = rightRec.total > 0 ? Math.round((diff / rightRec.total) * 100) : (leftRec.total > 0 ? 100 : 0);
 
     return {
       left: leftRec,
@@ -650,13 +668,27 @@ export default function MessDetail() {
   // Custom Day vs Day Comparison
   const customDayComparisonResult = useMemo(() => {
     const logs = wasteLogs[selectedBlockWaste] || [];
-    const leftRec = logs.find(l => l.date === compDayLeft);
-    const rightRec = logs.find(l => l.date === compDayRight);
+    
+    const getEmptyRec = (dateStr) => {
+      const d = new Date(dateStr);
+      return {
+        date: dateStr,
+        dayNum: d.getDate() || 1,
+        dayOfWeek: isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { weekday: 'short' }),
+        breakfast: 0, lunch: 0, dinner: 0, total: 0
+      };
+    };
 
-    if (!leftRec || !rightRec) return null;
+    let leftRec = logs.find(l => l.date === compDayLeft);
+    let rightRec = logs.find(l => l.date === compDayRight);
+
+    if (!compDayLeft || !compDayRight) return null;
+    
+    if (!leftRec) leftRec = getEmptyRec(compDayLeft);
+    if (!rightRec) rightRec = getEmptyRec(compDayRight);
     
     const diff = leftRec.total - rightRec.total;
-    const pct = rightRec.total > 0 ? Math.round((diff / rightRec.total) * 100) : 0;
+    const pct = rightRec.total > 0 ? Math.round((diff / rightRec.total) * 100) : (leftRec.total > 0 ? 100 : 0);
     
     return {
       left: leftRec,
@@ -668,7 +700,50 @@ export default function MessDetail() {
 
   // Weekly aggregate comparison helper
   const weeklyCompResult = useMemo(() => {
-    const weekData = weekWiseChartData;
+    const logs = getLogsForMonth(selectedBlockWaste, compWeeklyMonth);
+    const weeks = [
+      { name: 'Week 1 (1-7)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, bCountSum: 0, lCountSum: 0, dCountSum: 0, count: 0 },
+      { name: 'Week 2 (8-14)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, bCountSum: 0, lCountSum: 0, dCountSum: 0, count: 0 },
+      { name: 'Week 3 (15-21)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, bCountSum: 0, lCountSum: 0, dCountSum: 0, count: 0 },
+      { name: 'Week 4 (22-28)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, bCountSum: 0, lCountSum: 0, dCountSum: 0, count: 0 },
+      { name: 'Week 5 (29-31)', Breakfast: 0, Lunch: 0, Dinner: 0, Total: 0, bCountSum: 0, lCountSum: 0, dCountSum: 0, count: 0 },
+    ];
+
+    const occ = (blocks.find(b => b.name === selectedBlockWaste) || {}).occupied || 1;
+
+    logs.forEach(l => {
+      let wIdx = 0;
+      if (l.dayNum <= 7) wIdx = 0;
+      else if (l.dayNum <= 14) wIdx = 1;
+      else if (l.dayNum <= 21) wIdx = 2;
+      else if (l.dayNum <= 28) wIdx = 3;
+      else wIdx = 4;
+
+      weeks[wIdx].Breakfast += l.breakfast;
+      weeks[wIdx].Lunch += l.lunch;
+      weeks[wIdx].Dinner += l.dinner;
+      weeks[wIdx].Total += l.total;
+      weeks[wIdx].bCountSum += l.breakfastCount > 0 ? l.breakfastCount : occ;
+      weeks[wIdx].lCountSum += l.lunchCount > 0 ? l.lunchCount : occ;
+      weeks[wIdx].dCountSum += l.dinnerCount > 0 ? l.dinnerCount : occ;
+      weeks[wIdx].count += 1;
+    });
+
+    const weekData = weeks.map(w => {
+      let bCountAvg = w.bCountSum / (w.count || 1);
+      let lCountAvg = w.lCountSum / (w.count || 1);
+      let dCountAvg = w.dCountSum / (w.count || 1);
+      let tCountAvg = (bCountAvg + lCountAvg + dCountAvg) / 3;
+
+      return {
+        name: w.name,
+        Breakfast: Math.round(((w.Breakfast / (w.count || 1)) * 1000) / (bCountAvg || 1)),
+        Lunch: Math.round(((w.Lunch / (w.count || 1)) * 1000) / (lCountAvg || 1)),
+        Dinner: Math.round(((w.Dinner / (w.count || 1)) * 1000) / (dCountAvg || 1)),
+        Total: Math.round(((w.Total / (w.count || 1)) * 1000) / (tCountAvg || 1)),
+      };
+    });
+
     const map = { 'W1': 0, 'W2': 1, 'W3': 2, 'W4': 3, 'W5': 4 };
     const leftIdx = map[compWeekLeft] ?? 0;
     const rightIdx = map[compWeekRight] ?? 1;
@@ -681,33 +756,46 @@ export default function MessDetail() {
       rightVal: weekData[rightIdx]?.Total || 0,
       rightDetails: weekData[rightIdx] || { Breakfast: 0, Lunch: 0, Dinner: 0 },
     };
-  }, [weekWiseChartData, compWeekLeft, compWeekRight]);
+  }, [wasteLogs, selectedBlockWaste, blocks, compWeeklyMonth, compWeekLeft, compWeekRight]);
 
   // Block vs Block comparison helper
   const blockCompResult = useMemo(() => {
-    const leftSummary = getMonthlyTotalAndAverage(wasteLogs, compBlockLeft);
-    const rightSummary = getMonthlyTotalAndAverage(wasteLogs, compBlockRight);
+    const getMonthTotalAndAvg = (blockName, monthStr) => {
+      const logs = getLogsForMonth(blockName, monthStr);
+      const total = logs.reduce((acc, curr) => acc + curr.total, 0);
+      const avg = logs.length > 0 ? Math.round(total / logs.length) : 0;
+      return { total, avg };
+    };
+
+    const leftSummary = getMonthTotalAndAvg(compBlockLeft, compFacilityMonth);
+    const rightSummary = getMonthTotalAndAvg(compBlockRight, compFacilityMonth);
 
     const getMealTotals = (blockName) => {
-      const logs = wasteLogs[blockName] || [];
+      const logs = getLogsForMonth(blockName, compFacilityMonth);
       let bTotal = 0;
       let lTotal = 0;
       let dTotal = 0;
+      let bCountSum = 0;
+      let lCountSum = 0;
+      let dCountSum = 0;
+      const blockInfo = blocks.find(b => b.name === blockName) || { occupied: 1 };
+      const occ = blockInfo.occupied || 1;
       logs.forEach(l => {
         bTotal += l.breakfast;
         lTotal += l.lunch;
         dTotal += l.dinner;
+        bCountSum += l.breakfastCount > 0 ? l.breakfastCount : occ;
+        lCountSum += l.lunchCount > 0 ? l.lunchCount : occ;
+        dCountSum += l.dinnerCount > 0 ? l.dinnerCount : occ;
       });
-      const blockInfo = blocks.find(b => b.name === blockName) || { occupied: 1 };
-      const occ = blockInfo.occupied || 1;
       const days = logs.length || 1;
       return {
         breakfast: bTotal,
         lunch: lTotal,
         dinner: dTotal,
-        bPerHead: Math.round(((bTotal / days) * 1000) / occ),
-        lPerHead: Math.round(((lTotal / days) * 1000) / occ),
-        dPerHead: Math.round(((dTotal / days) * 1000) / occ),
+        bPerHead: Math.round(((bTotal / days) * 1000) / (bCountSum / days || 1)),
+        lPerHead: Math.round(((lTotal / days) * 1000) / (lCountSum / days || 1)),
+        dPerHead: Math.round(((dTotal / days) * 1000) / (dCountSum / days || 1)),
         occupied: occ
       };
     };
@@ -722,11 +810,11 @@ export default function MessDetail() {
       rightAvg: rightSummary.avg,
       rightDetails: getMealTotals(compBlockRight),
     };
-  }, [wasteLogs, compBlockLeft, compBlockRight, blocks]);
+  }, [wasteLogs, compBlockLeft, compBlockRight, blocks, compFacilityMonth]);
 
   // Summary Metrics: highest waste day, least waste day, weekly average
   const summaryMetrics = useMemo(() => {
-    const logs = wasteLogs[selectedBlockWaste] || [];
+    const logs = getLogsForMonth(selectedBlockWaste, analyticsMonth);
     if (logs.length === 0) return null;
 
     const occ = (blocks.find(b => b.name === selectedBlockWaste) || {}).occupied || 1;
@@ -742,6 +830,17 @@ export default function MessDetail() {
       return l.total;
     };
 
+    const getCount = (l) => {
+      let bCount = l.breakfastCount > 0 ? l.breakfastCount : occ;
+      let lCount = l.lunchCount > 0 ? l.lunchCount : occ;
+      let dCount = l.dinnerCount > 0 ? l.dinnerCount : occ;
+      if (analyticsMeal === 'Breakfast') return bCount;
+      if (analyticsMeal === 'Lunch') return lCount;
+      if (analyticsMeal === 'Dinner') return dCount;
+      return (bCount + lCount + dCount) / 3;
+    };
+
+    let sumCount = 0;
     logs.forEach(l => {
       const val = getVal(l);
       const maxVal = getVal(maxRec);
@@ -751,11 +850,13 @@ export default function MessDetail() {
       // Skip day scholars zero days for min comparison (if any) or look at non-zero minimums
       if (val < minVal) minRec = l;
       sum += val;
+      sumCount += getCount(l);
     });
 
-    const averageWeekly = Math.round(((sum / logs.length) * 7 * 1000) / occ);
-    const highestValG = Math.round((getVal(maxRec) * 1000) / occ);
-    const leastValG = Math.round((getVal(minRec) * 1000) / occ);
+    const avgCount = sumCount / (logs.length || 1);
+    const averageWeekly = Math.round(((sum / logs.length) * 7 * 1000) / avgCount);
+    const highestValG = Math.round((getVal(maxRec) * 1000) / getCount(maxRec));
+    const leastValG = Math.round((getVal(minRec) * 1000) / getCount(minRec));
 
     return {
       highestDay: maxRec.date,
@@ -764,7 +865,7 @@ export default function MessDetail() {
       leastVal: leastValG,
       avgWeekly: averageWeekly,
     };
-  }, [wasteLogs, selectedBlockWaste, blocks, analyticsMeal]);
+  }, [wasteLogs, selectedBlockWaste, blocks, analyticsMeal, analyticsMonth]);
 
   // Available Mondays helper for picker
   const mondaysInMay = [
@@ -827,6 +928,7 @@ export default function MessDetail() {
           {[
             { id: 'dashboard', label: 'Dashboard' },
             { id: 'equipment', label: 'Equipment Health' },
+            { id: 'manpower', label: 'Manpower' },
             { id: 'waste', label: 'Waste Analytics' },
             { id: 'comparisons', label: 'Comparisons' },
             { id: 'monthly', label: 'Month-wise View' },
@@ -1002,12 +1104,7 @@ export default function MessDetail() {
               </select>
             </div>
 
-            <button
-              onClick={() => setShowAddEquipModal(true)}
-              style={{ background: '#4f46e5', color: '#ffffff', border: 'none', padding: '9px 18px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              ➕ Add Equipment
-            </button>
+
           </div>
 
           {/* Equipment Grid Cards */}
@@ -1038,21 +1135,7 @@ export default function MessDetail() {
                   </div>
                 </div>
 
-                {/* Adjustment Buttons */}
-                <div style={{ display: 'flex', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
-                  <button
-                    onClick={() => handleQuickStatusAdjust(selectedBlockEquip, item.id, 1, 0)}
-                    style={{ flex: 1, padding: '6px 0', border: '1px solid #cbd5e1', background: '#ffffff', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}
-                  >
-                    🟢 Add Working
-                  </button>
-                  <button
-                    onClick={() => handleQuickStatusAdjust(selectedBlockEquip, item.id, 0, 1)}
-                    style={{ flex: 1, padding: '6px 0', border: '1px solid #fca5a5', background: '#fff5f5', color: '#b91c1c', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}
-                  >
-                    🔴 Add Damaged
-                  </button>
-                </div>
+
               </div>
             ))}
 
@@ -1063,67 +1146,65 @@ export default function MessDetail() {
             )}
           </div>
 
-          {/* Add Equipment Modal */}
-          {showAddEquipModal && (
-            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-              <form onSubmit={handleAddEquipment} style={{ background: '#ffffff', borderRadius: '16px', width: '90%', maxWidth: '440px', padding: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-                <h3 style={{ margin: '0 0 16px 0', fontWeight: 800, fontSize: '1.25rem' }}>➕ Add New Equipment</h3>
-                <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '18px' }}>Add inventory to <strong>{selectedBlockEquip}</strong> block.</p>
-                
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: '12px' }}>
-                  Equipment Name *
-                  <input
-                    type="text"
-                    required
-                    value={newEquip.name}
-                    onChange={e => setNewEquip({ ...newEquip, name: e.target.value })}
-                    placeholder="e.g. Grinder, Oven, Stove"
-                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', marginTop: '4px' }}
-                  />
-                </label>
 
-                <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-                  <label style={{ flex: 1, fontSize: '0.8rem', fontWeight: 700 }}>
-                    Working Qty
-                    <input
-                      type="number"
-                      min="0"
-                      value={newEquip.working}
-                      onChange={e => setNewEquip({ ...newEquip, working: e.target.value })}
-                      style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', marginTop: '4px' }}
-                    />
-                  </label>
-                  <label style={{ flex: 1, fontSize: '0.8rem', fontWeight: 700 }}>
-                    Damaged Qty
-                    <input
-                      type="number"
-                      min="0"
-                      value={newEquip.damaged}
-                      onChange={e => setNewEquip({ ...newEquip, damaged: e.target.value })}
-                      style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', marginTop: '4px' }}
-                    />
-                  </label>
-                </div>
+        </div>
+      )}
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddEquipModal(false)}
-                    style={{ background: '#f1f5f9', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, color: '#475569' }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    style={{ background: '#4f46e5', color: '#ffffff', border: 'none', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 700 }}
-                  >
-                    Add Item
-                  </button>
-                </div>
-              </form>
+      {/* ---------------------------------------------------------------------------------- */}
+      {/* TAB: MANPOWER */}
+      {/* ---------------------------------------------------------------------------------- */}
+      {activeTab === 'manpower' && (
+        <div style={{ animation: 'fadeIn 0.3s ease' }}>
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px 20px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+            <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+              <label style={{ fontSize: '0.9rem', fontWeight: 700 }}>
+                Block:
+                <select
+                  value={selectedBlockStaff}
+                  onChange={e => setSelectedBlockStaff(e.target.value)}
+                  style={{ marginLeft: '10px', padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600 }}
+                >
+                  <option value="Boys Day Scholar">Boys Day Scholar</option>
+                  <option value="Boys Hostel">Boys Hostel</option>
+                  <option value="Girls">Girls</option>
+                </select>
+              </label>
             </div>
-          )}
+            
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="🔍 Search staff..."
+                value={staffSearch}
+                onChange={e => setStaffSearch(e.target.value)}
+                style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', minWidth: '220px' }}
+              />
+            </div>
+          </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+            {filteredStaff.map(item => (
+              <div key={item.id} style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', position: 'relative', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                  <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>{item.name}</h4>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '4px 8px', borderRadius: '6px', background: '#eff6ff', color: '#2563eb' }}>
+                    {item.role}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '8px' }}>
+                  <strong>Shift:</strong> {item.shift}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                  <strong>Contact:</strong> {item.contact}
+                </div>
+              </div>
+            ))}
+            {filteredStaff.length === 0 && (
+              <div style={{ gridColumn: '1 / -1', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                🫙 No staff match the current search filters.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1159,8 +1240,7 @@ export default function MessDetail() {
                   onChange={e => setAnalyticsMonth(e.target.value)}
                   style={{ marginLeft: '10px', padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600 }}
                 >
-                  <option value="May 2026">May 2026</option>
-                  <option value="April 2026">April 2026 (Archived)</option>
+                  {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </label>
 
@@ -1207,7 +1287,7 @@ export default function MessDetail() {
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="day" />
                     <YAxis />
-                    <Tooltip labelFormatter={(v) => `May ${v}`} />
+                    <Tooltip labelFormatter={(v) => `${analyticsMonth.split(' ')[0]} ${v}`} />
                     <Area type="monotone" dataKey="SelectedValue" stroke="#4f46e5" strokeWidth={2.5} fillOpacity={1} fill="url(#colorWaste)" name={`${analyticsMeal} (g/head)`} />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -1241,8 +1321,10 @@ export default function MessDetail() {
                   style={{ padding: '4px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600, fontSize: '0.8rem' }}
                 >
                   <option value="All Month">All Month (Average)</option>
-                  {[...Array(31)].map((_, i) => (
-                    <option key={i+1} value={`2026-05-${String(i+1).padStart(2, '0')}`}>May {i+1}</option>
+                  {getLogsForMonth(selectedBlockWaste, analyticsMonth).map(l => (
+                    <option key={l.date} value={l.date}>
+                      {new Date(l.date).toLocaleString('default', { month: 'short' })} {l.dayNum}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -1306,7 +1388,16 @@ export default function MessDetail() {
             
             {/* Day of Week vs Day of Week Comparison */}
             <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-              <h4 style={{ margin: '0 0 12px 0', fontSize: '1.05rem', fontWeight: 800 }}>📅 Day-of-Week Comparison</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>📅 Day-of-Week Comparison</h4>
+                <select
+                  value={compDayOfWeekMonth}
+                  onChange={e => setCompDayOfWeekMonth(e.target.value)}
+                  style={{ padding: '4px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600, fontSize: '0.8rem' }}
+                >
+                  {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
               <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '16px' }}>Compare logs of matching weekdays (e.g. Tuesday vs Tuesday) to isolate weekday anomalies.</p>
               
               <div style={{ marginBottom: '16px' }}>
@@ -1338,7 +1429,7 @@ export default function MessDetail() {
                   >
                     {filteredCompDates.map(d => (
                       <option key={d.date} value={d.date}>
-                        {d.date} (May {d.dayNum})
+                        {d.date} ({new Date(d.date).toLocaleString('default', { month: 'short' })} {d.dayNum})
                       </option>
                     ))}
                   </select>
@@ -1352,7 +1443,7 @@ export default function MessDetail() {
                   >
                     {filteredCompDates.map(d => (
                       <option key={d.date} value={d.date}>
-                        {d.date} (May {d.dayNum})
+                        {d.date} ({new Date(d.date).toLocaleString('default', { month: 'short' })} {d.dayNum})
                       </option>
                     ))}
                   </select>
@@ -1371,18 +1462,18 @@ export default function MessDetail() {
                           <div>
                             <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Date {left.date}</div>
                             <div style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px' }}>
-                              <div>Breakfast: {left.breakfast} KG <strong>({Math.round((left.breakfast * 1000) / occ)}g/head)</strong></div>
-                              <div>Lunch: {left.lunch} KG <strong>({Math.round((left.lunch * 1000) / occ)}g/head)</strong></div>
-                              <div>Dinner: {left.dinner} KG <strong>({Math.round((left.dinner * 1000) / occ)}g/head)</strong></div>
+                              <div>Breakfast: {left.breakfast} KG <strong>({Math.round((left.breakfast * 1000) / (left.breakfastCount > 0 ? left.breakfastCount : occ))}g/head)</strong></div>
+                              <div>Lunch: {left.lunch} KG <strong>({Math.round((left.lunch * 1000) / (left.lunchCount > 0 ? left.lunchCount : occ))}g/head)</strong></div>
+                              <div>Dinner: {left.dinner} KG <strong>({Math.round((left.dinner * 1000) / (left.dinnerCount > 0 ? left.dinnerCount : occ))}g/head)</strong></div>
                               <div style={{ fontSize: '1.05rem', fontWeight: 800, marginTop: '4px', color: '#4f46e5' }}>Total: {left.total} KG</div>
                             </div>
                           </div>
                           <div style={{ textAlign: 'right', borderLeft: '1px dashed #cbd5e1', paddingLeft: '16px' }}>
                             <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Date {right.date}</div>
                             <div style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '4px', alignItems: 'flex-end' }}>
-                              <div>Breakfast: {right.breakfast} KG <strong>({Math.round((right.breakfast * 1000) / occ)}g/head)</strong></div>
-                              <div>Lunch: {right.lunch} KG <strong>({Math.round((right.lunch * 1000) / occ)}g/head)</strong></div>
-                              <div>Dinner: {right.dinner} KG <strong>({Math.round((right.dinner * 1000) / occ)}g/head)</strong></div>
+                              <div>Breakfast: {right.breakfast} KG <strong>({Math.round((right.breakfast * 1000) / (right.breakfastCount > 0 ? right.breakfastCount : occ))}g/head)</strong></div>
+                              <div>Lunch: {right.lunch} KG <strong>({Math.round((right.lunch * 1000) / (right.lunchCount > 0 ? right.lunchCount : occ))}g/head)</strong></div>
+                              <div>Dinner: {right.dinner} KG <strong>({Math.round((right.dinner * 1000) / (right.dinnerCount > 0 ? right.dinnerCount : occ))}g/head)</strong></div>
                               <div style={{ fontSize: '1.05rem', fontWeight: 800, marginTop: '4px', color: '#10b981' }}>Total: {right.total} KG</div>
                             </div>
                           </div>
@@ -1411,8 +1502,6 @@ export default function MessDetail() {
                   First Day:
                   <input
                     type="date"
-                    min="2026-05-01"
-                    max="2026-05-31"
                     value={compDayLeft}
                     onChange={e => setCompDayLeft(e.target.value)}
                     style={{ width: '100%', padding: '6px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px' }}
@@ -1422,8 +1511,6 @@ export default function MessDetail() {
                   Second Day:
                   <input
                     type="date"
-                    min="2026-05-01"
-                    max="2026-05-31"
                     value={compDayRight}
                     onChange={e => setCompDayRight(e.target.value)}
                     style={{ width: '100%', padding: '6px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px' }}
@@ -1441,20 +1528,20 @@ export default function MessDetail() {
                       <>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                           <div>
-                            <h5 style={{ margin: '0 0 8px 0', color: '#4f46e5' }}>May {left.dayNum} ({left.dayOfWeek})</h5>
+                            <h5 style={{ margin: '0 0 8px 0', color: '#4f46e5' }}>{new Date(left.date).toLocaleString('default', { month: 'short' })} {left.dayNum} ({left.dayOfWeek})</h5>
                             <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              <div>Breakfast: {left.breakfast} KG <strong>({Math.round((left.breakfast * 1000) / occ)}g/head)</strong></div>
-                              <div>Lunch: {left.lunch} KG <strong>({Math.round((left.lunch * 1000) / occ)}g/head)</strong></div>
-                              <div>Dinner: {left.dinner} KG <strong>({Math.round((left.dinner * 1000) / occ)}g/head)</strong></div>
+                              <div>Breakfast: {left.breakfast} KG <strong>({Math.round((left.breakfast * 1000) / (left.breakfastCount > 0 ? left.breakfastCount : occ))}g/head)</strong></div>
+                              <div>Lunch: {left.lunch} KG <strong>({Math.round((left.lunch * 1000) / (left.lunchCount > 0 ? left.lunchCount : occ))}g/head)</strong></div>
+                              <div>Dinner: {left.dinner} KG <strong>({Math.round((left.dinner * 1000) / (left.dinnerCount > 0 ? left.dinnerCount : occ))}g/head)</strong></div>
                               <div style={{ fontSize: '1.05rem', fontWeight: 800, borderTop: '1px solid #e2e8f0', paddingTop: '4px', marginTop: '4px', color: '#4f46e5' }}>Total: {left.total} KG</div>
                             </div>
                           </div>
                           <div style={{ borderLeft: '1px dashed #cbd5e1', paddingLeft: '12px' }}>
-                            <h5 style={{ margin: '0 0 8px 0', color: '#10b981' }}>May {right.dayNum} ({right.dayOfWeek})</h5>
+                            <h5 style={{ margin: '0 0 8px 0', color: '#10b981' }}>{new Date(right.date).toLocaleString('default', { month: 'short' })} {right.dayNum} ({right.dayOfWeek})</h5>
                             <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              <div>Breakfast: {right.breakfast} KG <strong>({Math.round((right.breakfast * 1000) / occ)}g/head)</strong></div>
-                              <div>Lunch: {right.lunch} KG <strong>({Math.round((right.lunch * 1000) / occ)}g/head)</strong></div>
-                              <div>Dinner: {right.dinner} KG <strong>({Math.round((right.dinner * 1000) / occ)}g/head)</strong></div>
+                              <div>Breakfast: {right.breakfast} KG <strong>({Math.round((right.breakfast * 1000) / (right.breakfastCount > 0 ? right.breakfastCount : occ))}g/head)</strong></div>
+                              <div>Lunch: {right.lunch} KG <strong>({Math.round((right.lunch * 1000) / (right.lunchCount > 0 ? right.lunchCount : occ))}g/head)</strong></div>
+                              <div>Dinner: {right.dinner} KG <strong>({Math.round((right.dinner * 1000) / (right.dinnerCount > 0 ? right.dinnerCount : occ))}g/head)</strong></div>
                               <div style={{ fontSize: '1.05rem', fontWeight: 800, borderTop: '1px solid #e2e8f0', paddingTop: '4px', marginTop: '4px', color: '#10b981' }}>Total: {right.total} KG</div>
                             </div>
                           </div>
@@ -1482,8 +1569,7 @@ export default function MessDetail() {
                   onChange={e => setCompWeeklyMonth(e.target.value)}
                   style={{ padding: '4px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600, fontSize: '0.8rem' }}
                 >
-                  <option value="May 2026">May 2026</option>
-                  <option value="April 2026">April 2026</option>
+                  {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
               <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '16px' }}>Compare average weekly metrics across {compWeeklyMonth}.</p>
@@ -1570,8 +1656,7 @@ export default function MessDetail() {
                   onChange={e => setCompFacilityMonth(e.target.value)}
                   style={{ padding: '4px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600, fontSize: '0.8rem' }}
                 >
-                  <option value="May 2026">May 2026</option>
-                  <option value="April 2026">April 2026</option>
+                  {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
               <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '16px' }}>Compare total waste outputs between different hostels for {compFacilityMonth}.</p>
@@ -1656,9 +1741,7 @@ export default function MessDetail() {
                   onChange={e => setSelectedReportMonth(e.target.value)}
                   style={{ marginLeft: '8px', padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 600 }}
                 >
-                  <option value="May 2026">May 2026</option>
-                  <option value="April 2026">April 2026 (Archived)</option>
-                  <option value="March 2026">March 2026 (Archived)</option>
+                  {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </label>
 
@@ -1689,13 +1772,16 @@ export default function MessDetail() {
             <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
               <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Monthly Total Waste</div>
               <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#4f46e5', marginTop: '6px' }}>
-                {getMonthlyTotalAndAverage(wasteLogs, selectedBlockWaste).total.toLocaleString()} KG
+                {getLogsForMonth(selectedBlockWaste, selectedReportMonth).reduce((acc, l) => acc + l.total, 0).toLocaleString()} KG
               </div>
             </div>
             <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
               <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Daily Average Waste</div>
               <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#10b981', marginTop: '6px' }}>
-                {getMonthlyTotalAndAverage(wasteLogs, selectedBlockWaste).avg} KG / day
+                {(() => {
+                  const logs = getLogsForMonth(selectedBlockWaste, selectedReportMonth);
+                  return logs.length > 0 ? Math.round(logs.reduce((acc, l) => acc + l.total, 0) / logs.length) : 0;
+                })()} KG / day
               </div>
             </div>
             <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
@@ -1725,7 +1811,7 @@ export default function MessDetail() {
                   </tr>
                 </thead>
                 <tbody>
-                  {((wasteLogs || {})[selectedBlockWaste] || []).map(row => {
+                  {getLogsForMonth(selectedBlockWaste, selectedReportMonth).map(row => {
                     const occ = (blocks.find(b => b.name === selectedBlockWaste) || {}).occupied || 1;
                     const bCount = row.breakfastCount > 0 ? row.breakfastCount : occ;
                     const lCount = row.lunchCount > 0 ? row.lunchCount : occ;

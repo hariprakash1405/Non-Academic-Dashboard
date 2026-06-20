@@ -47,6 +47,11 @@ type HostelBlock struct {
 	CommonRoom          string  `json:"commonRoom"`
 	ReadingRoom         string  `json:"readingRoom"`
 	ParentWaitingRoom   string  `json:"parentWaitingRoom"`
+
+	AttendancePresent   int                   `json:"attendancePresent"`
+	AttendancePermitted int                   `json:"attendancePermitted"`
+	AttendanceUnexcused int                   `json:"attendanceUnexcused"`
+	AbsentList          []AbsentStudentDetail `gorm:"foreignKey:HostelBlockName" json:"absentList"`
 }
 
 type Warden struct {
@@ -58,6 +63,13 @@ type Warden struct {
 }
 
 type StudentDetail struct {
+	RollNo          string `gorm:"primaryKey" json:"rollNo"`
+	HostelBlockName string `json:"-"`
+	Name            string `json:"name"`
+	RoomNo          string `json:"roomNo"`
+}
+
+type AbsentStudentDetail struct {
 	RollNo          string `gorm:"primaryKey" json:"rollNo"`
 	HostelBlockName string `json:"-"`
 	Name            string `json:"name"`

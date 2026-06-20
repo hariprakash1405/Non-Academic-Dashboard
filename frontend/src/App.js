@@ -40,6 +40,7 @@ import TransportUnitForm from './TransportUnitForm';
 import HorticultureUnitForm from './HorticultureUnitForm';
 import PlumbingDetail from './PlumbingDetail';
 import PlumbingUnitForm from './PlumbingUnitForm';
+import PowerHouseUnitForm from './PowerHouseUnitForm';
 import { buildExecutivePayload, exportExecutivePdf, exportExecutiveExcel } from './exportReports';
 
 /** Unit names with open maintenance / compliance alerts (drives count + red highlight). */
@@ -1119,6 +1120,13 @@ function UnitDetailWrapper({ currentUser }) {
               <PlumbingUnitForm
                 onDataSaved={() => setShowUnitModal(false)}
               />
+            ) : unitName === 'Power House' ? (
+              <PowerHouseUnitForm
+                onClose={() => {
+                  setShowUnitModal(false);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              />
             ) : (
               <UnitDataForm
                 unitName={unitName}
@@ -1520,6 +1528,7 @@ function AppRoutes({ currentUser, onLogin, onLogout }) {
                 {modules.map(mod => {
                   const band = getKpiBand(mod.kpiScore);
                   const isChillerPlantActive = mod.name === 'Chiller Plant' && location.pathname.includes('/unit/Chiller');
+                  const isPlumbingActive = mod.name === 'Plumbing' && location.pathname.includes('/unit/Plumbing');
                   return (
                     <React.Fragment key={mod.name}>
                       <div style={{ padding: '10px 12px', margin: '4px 0', cursor: 'pointer', fontSize: '0.9rem', color: '#e2e8f0', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }} onClick={() => { navigate(`/unit/${encodeURIComponent(mod.name)}`); closeSidebarOnMobile(); }} onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.background = 'transparent'; }}>
@@ -1538,6 +1547,26 @@ function AppRoutes({ currentUser, onLogin, onLogout }) {
                           ].map(tab => (
                             <div key={tab.id} style={{ padding: '8px 12px', margin: '2px 0', cursor: 'pointer', fontSize: '0.85rem', color: '#cbd5e1', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
                                  onClick={() => { window.dispatchEvent(new CustomEvent('change-chiller-tab', { detail: tab.id })); closeSidebarOnMobile(); }} 
+                                 onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#cbd5e1'; e.currentTarget.style.background = 'transparent'; }}>
+                              <span style={{ color: '#b8972e', flexShrink: 0 }}>•</span>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.title}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {isPlumbingActive && (
+                        <div style={{ paddingLeft: '24px' }}>
+                          {[
+                            { id: 'overview', title: '📊 Overview' },
+                            { id: 'oht', title: '🚰 OHTs' },
+                            { id: 'sumps', title: '🕳️ Sumps' },
+                            { id: 'motors', title: '⚙️ Motors' },
+                            { id: 'manpower', title: '👥 Manpower' },
+                            { id: 'borewells', title: '💧 Borewells' },
+                            { id: 'wells', title: '🌊 Open Wells' }
+                          ].map(tab => (
+                            <div key={tab.id} style={{ padding: '8px 12px', margin: '2px 0', cursor: 'pointer', fontSize: '0.85rem', color: '#cbd5e1', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
+                                 onClick={() => { window.dispatchEvent(new CustomEvent('change-plumbing-tab', { detail: tab.id })); closeSidebarOnMobile(); }} 
                                  onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#cbd5e1'; e.currentTarget.style.background = 'transparent'; }}>
                               <span style={{ color: '#b8972e', flexShrink: 0 }}>•</span>
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.title}</span>
@@ -1568,6 +1597,25 @@ function AppRoutes({ currentUser, onLogin, onLogout }) {
                     ].map(tab => (
                       <div key={tab.id} style={{ padding: '10px 12px', margin: '4px 0', cursor: 'pointer', fontSize: '0.85rem', color: '#e2e8f0', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
                            onClick={() => { window.dispatchEvent(new CustomEvent('change-chiller-tab', { detail: tab.id })); closeSidebarOnMobile(); }} 
+                           onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.background = 'transparent'; }}>
+                        <span style={{ color: '#b8972e', flexShrink: 0 }}>•</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.title}</span>
+                      </div>
+                    ))}
+                  </>
+                ) : currentUser?.unitName === 'Plumbing' ? (
+                  <>
+                    {[
+                      { id: 'overview', title: '📊 Overview' },
+                      { id: 'oht', title: '🚰 OHTs' },
+                      { id: 'sumps', title: '🕳️ Sumps' },
+                      { id: 'motors', title: '⚙️ Motors' },
+                      { id: 'manpower', title: '👥 Manpower' },
+                      { id: 'borewells', title: '💧 Borewells' },
+                      { id: 'wells', title: '🌊 Open Wells' }
+                    ].map(tab => (
+                      <div key={tab.id} style={{ padding: '10px 12px', margin: '4px 0', cursor: 'pointer', fontSize: '0.85rem', color: '#e2e8f0', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
+                           onClick={() => { window.dispatchEvent(new CustomEvent('change-plumbing-tab', { detail: tab.id })); closeSidebarOnMobile(); }} 
                            onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.background = 'transparent'; }}>
                         <span style={{ color: '#b8972e', flexShrink: 0 }}>•</span>
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.title}</span>

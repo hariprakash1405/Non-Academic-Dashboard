@@ -66,7 +66,7 @@ func initDB() {
 
 		// Hostel tables
 		LogInfo("DB", "AutoMigrate: Hostel tables")
-		DB.AutoMigrate(&models.HostelBlock{}, &models.Warden{}, &models.StudentDetail{}, &models.MaintenanceTicket{}, &models.DailyUsage{}, &models.HostelFloorDetail{})
+		DB.AutoMigrate(&models.HostelBlock{}, &models.Warden{}, &models.StudentDetail{}, &models.AbsentStudentDetail{}, &models.MaintenanceTicket{}, &models.DailyUsage{}, &models.HostelFloorDetail{})
 
 		// Transport tables
 		LogInfo("DB", "AutoMigrate: Transport tables")
@@ -88,7 +88,11 @@ func initDB() {
 		LogInfo("DB", "AutoMigrate: Plumbing tables")
 		DB.Exec("DROP TABLE IF EXISTS plumbing_sumps CASCADE;")
 		DB.Exec("DROP TABLE IF EXISTS plumbing_ohts CASCADE;")
-		DB.AutoMigrate(&models.PlumbingMotor{}, &models.PlumbingSump{}, &models.PlumbingOHT{}, &models.PlumbingManpower{}, &models.PlumbingRuntimeLog{})
+		DB.AutoMigrate(&models.PlumbingMotor{}, &models.PlumbingSump{}, &models.PlumbingOHT{}, &models.PlumbingManpower{}, &models.PlumbingRuntimeLog{}, &models.PlumbingRiverIntakeLog{})
+
+		// PowerHouse tables
+		LogInfo("DB", "AutoMigrate: PowerHouse tables")
+		DB.AutoMigrate(&models.PhTransformer{}, &models.PhDGSet{}, &models.PhUps{}, &models.PhSolarPv{}, &models.PhStaff{}, &models.PhDynamicLog{}, &models.PhDailyMetric{})
 	}
 }
 
@@ -111,6 +115,11 @@ func main() {
 	api.Chiller()
 	api.Horticulture()
 	api.Plumbing()
+
+	// Powerhouse routes
+	http.HandleFunc("/api/powerhouse/data", lm(api.HandlePowerHouseData))
+	http.HandleFunc("/api/powerhouse", lm(api.GetPowerHouseData))
+	http.HandleFunc("/api/powerhouse/trend", lm(api.GetPowerHouseTrendData))
 
 	LogInfo("HTTP", "Registering routes...")
 
@@ -190,7 +199,11 @@ func main() {
 	http.HandleFunc("/api/mess/data", lm(api.HandleGetMessData))
 	http.HandleFunc("/api/mess/log-waste", lm(api.HandleAddMessWaste))
 	http.HandleFunc("/api/mess/staff", lm(api.HandleAddMessStaff))
+	http.HandleFunc("/api/mess/update-staff", lm(api.HandleUpdateMessStaff))
+	http.HandleFunc("/api/mess/delete-staff", lm(api.HandleDeleteMessStaff))
 	http.HandleFunc("/api/mess/equipment", lm(api.HandleAddMessEquipment))
+	http.HandleFunc("/api/mess/update-equipment", lm(api.HandleUpdateMessEquipment))
+	http.HandleFunc("/api/mess/delete-equipment", lm(api.HandleDeleteMessEquipment))
 	http.HandleFunc("/api/mess/menu", lm(api.HandleAddMessMenu))
 	http.HandleFunc("/api/mess/menu-pdf", lm(api.HandleAddMessMenuPDF))
 
@@ -213,6 +226,7 @@ func main() {
 	http.HandleFunc("/api/plumbing/add-manpower", lm(api.AddPlumbingManpower))
 	http.HandleFunc("/api/plumbing/delete-manpower", lm(api.DeletePlumbingManpower))
 	http.HandleFunc("/api/plumbing/add-runtime", lm(api.AddPlumbingRuntime))
+	http.HandleFunc("/api/plumbing/add-river-intake", lm(api.AddPlumbingRiverIntake))
 
 	serverPort := os.Getenv("SERVER_PORT")
 	if serverPort == "" {

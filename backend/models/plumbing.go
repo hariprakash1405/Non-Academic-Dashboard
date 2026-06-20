@@ -67,3 +67,10 @@ type PlumbingRuntimeLog struct {
 	S3         string `json:"s3"`
 	S4         string `json:"s4"`
 }
+
+type PlumbingRiverIntakeLog struct {
+	ID      uint    `gorm:"primaryKey" json:"id"`
+	Date    string  `json:"date"`
+	Intake  float64 `json:"intake"`
+	Remarks string  `json:"remarks"`
+}

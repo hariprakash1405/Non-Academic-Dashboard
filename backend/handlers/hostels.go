@@ -43,7 +43,7 @@ func (h *APIHandler) GetHostels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var blocks []models.HostelBlock
-	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Preload("AbsentList").Find(&blocks)
 
 	// Self-healing: Ensure existing DB records perfectly match actual array lengths
 	for i := range blocks {
@@ -273,6 +273,15 @@ func (h *APIHandler) UpdateBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var cleanedAbsentList []models.AbsentStudentDetail
+	for _, res := range input.AbsentList {
+		if res.Name != "" || res.RollNo != "" || res.RoomNo != "" {
+			cleanedAbsentList = append(cleanedAbsentList, res)
+		}
+	}
+	input.AbsentList = cleanedAbsentList
+	input.AttendanceUnexcused = len(input.AbsentList)
+
 	// GORM Transaction to securely update block and overwrite collections
 	err := h.DB.Transaction(func(tx *gorm.DB) error {
 		// Clear old associated records so additions/removals are applied completely
@@ -282,16 +291,56 @@ func (h *APIHandler) UpdateBlock(w http.ResponseWriter, r *http.Request) {
 		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&models.StudentDetail{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&models.AbsentStudentDetail{}).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&models.HostelFloorDetail{}).Error; err != nil {
 			return err
 		}
 
-		// Save the block (temporarily clear complaints from input to avoid bulk insertion conflicts)
+		// Save the block (temporarily clear associations to manage inserts manually)
 		complaints := input.Complaints
 		input.Complaints = nil
 
+		residents := input.ResidentList
+		input.ResidentList = nil
+
+		wardens := input.Wardens
+		input.Wardens = nil
+
+		floorDetails := input.FloorDetails
+		input.FloorDetails = nil
+
 		if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&input).Error; err != nil {
 			return err
+		}
+
+		if len(residents) > 0 {
+			for i := range residents {
+				residents[i].HostelBlockName = input.Name
+			}
+			if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&residents).Error; err != nil {
+				return err
+			}
+		}
+
+		if len(wardens) > 0 {
+			for i := range wardens {
+				wardens[i].HostelBlockName = input.Name
+			}
+			if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&wardens).Error; err != nil {
+				return err
+			}
+		}
+
+		if len(floorDetails) > 0 {
+			for i := range floorDetails {
+				floorDetails[i].HostelBlockName = input.Name
+				floorDetails[i].ID = 0 // Assign new IDs
+			}
+			if err := tx.Create(&floorDetails).Error; err != nil {
+				return err
+			}
 		}
 
 		// Upsert only the newly given daily complaints / tickets
@@ -310,7 +359,7 @@ func (h *APIHandler) UpdateBlock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var blocks []models.HostelBlock
-	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Preload("AbsentList").Find(&blocks)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -378,7 +427,7 @@ func (h *APIHandler) RaiseComplaint(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch all blocks to return updated state
 	var blocks []models.HostelBlock
-	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Preload("AbsentList").Find(&blocks)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -427,7 +476,7 @@ func (h *APIHandler) UpdateComplaintStatus(w http.ResponseWriter, r *http.Reques
 
 	// Fetch all blocks to return updated state
 	var blocks []models.HostelBlock
-	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Preload("AbsentList").Find(&blocks)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -538,7 +587,7 @@ func (h *APIHandler) RenameBlock(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch fresh data and return
 	var blocks []models.HostelBlock
-	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Preload("AbsentList").Find(&blocks)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(blocks)
 }
@@ -596,6 +645,10 @@ func (h *APIHandler) AddBlock(w http.ResponseWriter, r *http.Request) {
 		CommonRoom          string  `json:"commonRoom"`
 		ReadingRoom         string  `json:"readingRoom"`
 		ParentWaitingRoom   string  `json:"parentWaitingRoom"`
+
+		AttendancePresent   int `json:"attendancePresent"`
+		AttendancePermitted int `json:"attendancePermitted"`
+		AttendanceUnexcused int `json:"attendanceUnexcused"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -655,6 +708,9 @@ func (h *APIHandler) AddBlock(w http.ResponseWriter, r *http.Request) {
 			CommonRoom:             req.CommonRoom,
 			ReadingRoom:            req.ReadingRoom,
 			ParentWaitingRoom:      req.ParentWaitingRoom,
+			AttendancePresent:      req.AttendancePresent,
+			AttendancePermitted:    req.AttendancePermitted,
+			AttendanceUnexcused:    req.AttendanceUnexcused,
 		}
 
 		if err := tx.Create(&newBlock).Error; err != nil {
@@ -695,7 +751,7 @@ func (h *APIHandler) AddBlock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var blocks []models.HostelBlock
-	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Preload("AbsentList").Find(&blocks)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(blocks)
 }
@@ -768,7 +824,7 @@ func (h *APIHandler) DeleteBlock(w http.ResponseWriter, r *http.Request) {
 
 	// Return updated block list
 	var blocks []models.HostelBlock
-	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Find(&blocks)
+	h.DB.Preload("Wardens").Preload("ResidentList").Preload("Complaints").Preload("FloorDetails").Preload("AbsentList").Find(&blocks)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(blocks)
 }

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   XAxis,
   YAxis,
@@ -108,52 +108,320 @@ const powerhouseStaff = [
 export default function PowerHouseDetail() {
   const [activeTab, setActiveTab] = React.useState('main');
   const [timeRange, setTimeRange] = React.useState('day');
+  const [selectedMonth, setSelectedMonth] = React.useState('2026-05');
+
+  const [phData, setPhData] = useState(null);
+  const [selectedDate, setSelectedDate] = useState('');
+  const [trendData, setTrendData] = useState({ daily: [], monthly: [] });
+
+  const fetchData = useCallback(() => {
+    const url = selectedDate ? `http://localhost:8085/api/powerhouse?date=${selectedDate}` : `http://localhost:8085/api/powerhouse`;
+    fetch(url)
+      .then(res => res.json())
+      .then(data => {
+        if (data) {
+          setPhData(data);
+          if (!selectedDate && data.date) {
+            setSelectedDate(data.date);
+          }
+        }
+      })
+      .catch(err => {
+        console.warn("Could not connect to backend powerhouse API.", err);
+      });
+  }, [selectedDate]);
+
+  const fetchTrendData = useCallback(() => {
+    fetch(`http://localhost:8085/api/powerhouse/trend?month=${selectedMonth}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data) {
+          setTrendData(data);
+        }
+      })
+      .catch(err => {
+        console.warn("Could not connect to monthly trend API", err);
+      });
+  }, [selectedMonth]);
+
+  useEffect(() => {
+    fetchData();
+    window.addEventListener('unit-form-updated', fetchData);
+    return () => {
+      window.removeEventListener('unit-form-updated', fetchData);
+    };
+  }, [fetchData]);
+
+  useEffect(() => {
+    fetchTrendData();
+    window.addEventListener('unit-form-updated', fetchTrendData);
+    return () => {
+      window.removeEventListener('unit-form-updated', fetchTrendData);
+    };
+  }, [fetchTrendData]);
+
+  const computedEB = useMemo(() => {
+    if (phData?.ebDynamic && phData.ebDynamic.length > 0) {
+      return phData.ebDynamic.map(d => ({ hour: d.hour, consumption: parseFloat(d.value) || 0 }));
+    }
+    return [];
+  }, [phData]);
+
+  const computedDG = useMemo(() => {
+    if (phData?.dgDynamic && phData.dgDynamic.length > 0) {
+      return phData.dgDynamic.map(d => ({ hour: d.hour, consumption: parseFloat(d.value) || 0 }));
+    }
+    return [];
+  }, [phData]);
+
+  const computedSolar = useMemo(() => {
+    if (phData?.solarDynamic && phData.solarDynamic.length > 0) {
+      return phData.solarDynamic.map(d => ({
+        hour: d.hour,
+        generation: parseFloat(d.generation) || 0,
+        consumption: parseFloat(d.value) || 0
+      }));
+    }
+    return [];
+  }, [phData]);
+
+  const computedCombined = useMemo(() => {
+    const hasData = (phData?.ebDynamic && phData.ebDynamic.length > 0) ||
+                    (phData?.solarDynamic && phData.solarDynamic.length > 0) ||
+                    (phData?.dgDynamic && phData.dgDynamic.length > 0);
+    if (hasData) {
+      return Array.from({ length: 24 }, (_, i) => {
+        const hr = `${i.toString().padStart(2, '0')}:00`;
+        const ebItem = phData.ebDynamic?.find(d => d.hour === hr);
+        const solarItem = phData.solarDynamic?.find(d => d.hour === hr);
+        const dgItem = phData.dgDynamic?.find(d => d.hour === hr);
+        
+        const ebVal = parseFloat(ebItem?.value) || 0;
+        const solarVal = parseFloat(solarItem?.generation) || 0;
+        const dgVal = parseFloat(dgItem?.value) || 0;
+        
+        return {
+          hour: hr,
+          solar: solarVal,
+          eb: ebVal,
+          dg: dgVal,
+          total: ebVal + solarVal + dgVal
+        };
+      });
+    }
+    return [];
+  }, [phData]);
+
+  const computedStaff = useMemo(() => {
+    if (phData?.staff && phData.staff.length > 0) {
+      return phData.staff.map((s, idx) => ({
+        id: s.id || idx + 1,
+        name: s.name,
+        role: s.role,
+        sector: s.shift || 'Morning',
+        portion: s.contact || '-',
+        attendance: s.attendance || 'Present',
+        contact: s.contact || '-'
+      }));
+    }
+    return [];
+  }, [phData]);
+
+  const computedEquipment = useMemo(() => {
+    const list = [];
+    let id = 1;
+    if (phData?.transformers && phData.transformers.length > 0) {
+      phData.transformers.forEach(t => {
+        list.push({
+          id: id++,
+          name: `Transformer (${t.svcNum || 'N/A'})`,
+          type: 'Transformer',
+          spec: `Load: ${t.load || '-'}, Voltage: ${t.voltage || '-'}, Feeders: ${t.feeders || '-'}`,
+          status: t.type || 'Permanent HT',
+          isActive: true,
+          health: 95
+        });
+      });
+    }
+    if (phData?.dgSets && phData.dgSets.length > 0) {
+      phData.dgSets.forEach(d => {
+        list.push({
+          id: id++,
+          name: `DG Set - ${d.ratingMake || 'N/A'}`,
+          type: 'Generator',
+          spec: `Fuel Cap: ${d.fuelCap || '-'} L, Count: ${d.count || '-'}`,
+          status: d.status || 'Working',
+          isActive: d.status === 'Working',
+          health: d.status === 'Working' ? 92 : 40
+        });
+      });
+    }
+    if (phData?.ups && phData.ups.length > 0) {
+      phData.ups.forEach(u => {
+        list.push({
+          id: id++,
+          name: `UPS - ${u.ratingMake || 'N/A'}`,
+          type: 'Panel',
+          spec: `Loc: ${u.location || '-'}, Battery Cap: ${u.batteryCap || '-'}`,
+          status: u.status || 'Working',
+          isActive: u.status === 'Working',
+          health: u.status === 'Working' ? 95 : 35
+        });
+      });
+    }
+    if (phData?.solarPv && phData.solarPv.length > 0) {
+      phData.solarPv.forEach(s => {
+        list.push({
+          id: id++,
+          name: `Solar PV - ${s.location || 'N/A'}`,
+          type: 'Inverter',
+          spec: `Cap: ${s.capacity || '-'}, Panels: ${s.panels || '-'} (${s.panelWatts || '-'}W)`,
+          status: s.status || 'Working',
+          isActive: s.status === 'Working',
+          health: s.status === 'Working' ? 97 : 45
+        });
+      });
+    }
+    
+    if (list.length > 0) return list;
+    return [];
+  }, [phData]);
+
+  const computedDailyPower = useMemo(() => {
+    return trendData.daily || [];
+  }, [trendData]);
 
   const powerBars = useMemo(
-    () => dailyPower.map((d) => ({ ...d, pfPercent: Math.round(d.pf * 100) })),
-    []
+    () => computedDailyPower.map((d) => ({ ...d, pfPercent: Math.round(d.pf * 100) })),
+    [computedDailyPower]
   );
 
   const renderFinancials = (type) => {
-    const data = {
-      solar: { daily: '₹0 (Free)', monthly: '₹4.2L Savings', color: '#16a34a' },
-      dg: { daily: '₹8,200', monthly: '₹1.1L', color: '#ea580c' },
-      eb: { daily: '₹4,500', monthly: '₹1.35L', color: '#2563eb' }
-    };
-    const current = data[type];
+    let daily = '';
+    let monthly = '';
+    let color = '';
+    
+    if (type === 'solar') {
+      const solarTotal = computedCombined.reduce((sum, d) => sum + d.solar, 0);
+      const solarMonthly = (trendData.monthly || []).reduce((sum, d) => sum + (d.solar || 0), 0);
+      daily = `₹${(solarTotal * 5.3).toFixed(0)} Savings`;
+      monthly = `₹${(solarMonthly * 5.3).toLocaleString()} Savings`;
+      color = '#16a34a';
+    } else if (type === 'dg') {
+      const dgFuelUsed = (phData && phData.dgDailyFuel) ? phData.dgDailyFuel : 0;
+      const dgMonthlyFuel = (trendData.monthly || []).reduce((sum, d) => sum + (d.dg || 0), 0);
+      daily = `₹${(dgFuelUsed * 98).toFixed(0)}`;
+      monthly = `₹${(dgMonthlyFuel * 98).toLocaleString()}`;
+      color = '#ea580c';
+    } else if (type === 'eb') {
+      const ebTotal = computedCombined.reduce((sum, d) => sum + d.eb, 0);
+      const ebMonthly = (trendData.monthly || []).reduce((sum, d) => sum + (d.eb || 0), 0);
+      daily = `₹${(ebTotal * 5.3).toFixed(0)}`;
+      monthly = `₹${(ebMonthly * 5.3).toLocaleString()}`;
+      color = '#2563eb';
+    }
+
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' }}>
         <div style={{ background: '#fff', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Daily Cost</div>
-          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: current.color }}>{current.daily}</div>
+          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: color }}>{daily}</div>
         </div>
         <div style={{ background: '#fff', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
           <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Monthly Bill (Est.)</div>
-          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: current.color }}>{current.monthly}</div>
+          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: color }}>{monthly}</div>
         </div>
       </div>
     );
   };
 
   const renderComparisonChart = () => {
-    const data = timeRange === 'month' ? monthWiseData : dailyPower;
+    const data = timeRange === 'month' ? (trendData.monthly || []) : computedDailyPower;
     const xKey = timeRange === 'month' ? 'month' : 'date';
-    const dataKey = activeTab === 'solar' ? (timeRange === 'month' ? 'solar' : 'solarGen') : (activeTab === 'dg' ? (timeRange === 'month' ? 'dg' : 'dgFuel') : (timeRange === 'month' ? 'eb' : 'consumption'));
-    
+
+    if (activeTab === 'dg') {
+      return (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h4 style={{ margin: 0 }}>{timeRange === 'month' ? 'Month-wise' : 'Day-wise'} Trend Analysis</h4>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              {timeRange === 'day' && (
+                <input 
+                  type="month" 
+                  value={selectedMonth} 
+                  onChange={(e) => setSelectedMonth(e.target.value)} 
+                  style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', color: '#1e293b' }} 
+                />
+              )}
+              <div style={{ display: 'flex', background: '#f1f5f9', padding: '2px', borderRadius: '8px' }}>
+                {['day', 'month'].map(r => (
+                  <button 
+                    key={r} 
+                    onClick={() => setTimeRange(r)}
+                    style={{ padding: '4px 12px', border: 'none', background: timeRange === r ? '#fff' : 'transparent', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase' }}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="detail-chart-block">
+            <h4>{timeRange === 'month' ? 'Month-wise' : 'Day-wise'} Diesel Usage Trend</h4>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={data}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey={xKey} />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey={timeRange === 'month' ? 'dg' : 'dgFuel'} stroke="#ea580c" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} name="Diesel Usage (L)" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="detail-chart-block">
+            <h4>{timeRange === 'month' ? 'Month-wise' : 'Day-wise'} Energy Consumption Trend</h4>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={data}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey={xKey} />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey={timeRange === 'month' ? 'dg' : 'consumption'} stroke="#1e293b" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} name="Consumption (Units)" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      );
+    }
+
+    const dataKey = activeTab === 'solar' ? (timeRange === 'month' ? 'solar' : 'solarGen') : (timeRange === 'month' ? 'eb' : 'consumption');
+    let chartName = activeTab === 'solar' ? "Solar Generation (Units)" : "EB Consumption (Units)";
+    let strokeColor = activeTab === 'solar' ? "#16a34a" : "#1976d2";
+
     return (
       <div className="detail-chart-block">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h4 style={{ margin: 0 }}>{timeRange === 'month' ? 'Month-wise' : 'Day-wise'} Trend Analysis</h4>
-          <div style={{ display: 'flex', background: '#f1f5f9', padding: '2px', borderRadius: '8px' }}>
-            {['day', 'month'].map(r => (
-              <button 
-                key={r} 
-                onClick={() => setTimeRange(r)}
-                style={{ padding: '4px 12px', border: 'none', background: timeRange === r ? '#fff' : 'transparent', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase' }}
-              >
-                {r}
-              </button>
-            ))}
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            {timeRange === 'day' && (
+              <input 
+                type="month" 
+                value={selectedMonth} 
+                onChange={(e) => setSelectedMonth(e.target.value)} 
+                style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', color: '#1e293b' }} 
+              />
+            )}
+            <div style={{ display: 'flex', background: '#f1f5f9', padding: '2px', borderRadius: '8px' }}>
+              {['day', 'month'].map(r => (
+                <button 
+                  key={r} 
+                  onClick={() => setTimeRange(r)}
+                  style={{ padding: '4px 12px', border: 'none', background: timeRange === r ? '#fff' : 'transparent', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase' }}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         <ResponsiveContainer width="100%" height={260}>
@@ -163,7 +431,7 @@ export default function PowerHouseDetail() {
             <YAxis />
             <Tooltip />
             <Legend />
-            <Line type="monotone" dataKey={dataKey} stroke="#1976d2" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} name="Consumption/Gen" />
+            <Line type="monotone" dataKey={dataKey} stroke={strokeColor} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} name={chartName} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -171,7 +439,7 @@ export default function PowerHouseDetail() {
   };
 
   const renderHourlyLog = (sourceType) => {
-    const data = sourceType === 'solar' ? hourlySolar : (sourceType === 'eb' ? hourlyEB : hourlyDG);
+    const data = sourceType === 'solar' ? computedSolar : (sourceType === 'eb' ? computedEB : computedDG);
     return (
       <div style={{ marginTop: 24 }}>
         <h4 style={{ marginBottom: 16 }}>Detailed Hourly Log ({sourceType.toUpperCase()})</h4>
@@ -179,23 +447,17 @@ export default function PowerHouseDetail() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>
               <tr style={{ background: '#f8fafc', textAlign: 'left' }}>
-                <th style={{ padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Hour</th>
-                {sourceType !== 'eb' && <th style={{ padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Generation (kWh)</th>}
-                <th style={{ padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Consumption (kWh)</th>
-                {sourceType === 'dg' && <th style={{ padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Fuel Use (L)</th>}
-                {sourceType !== 'dg' && <th style={{ padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Voltage (V)</th>}
-                {sourceType !== 'dg' && <th style={{ padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Current (A)</th>}
+                <th style={{ padding: '12px', borderBottom: '1px solid #e2e8f0', width: '25%' }}>Hour</th>
+                {sourceType !== 'eb' && <th style={{ padding: '12px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>Generation (Units)</th>}
+                <th style={{ padding: '12px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>Consumption (Units)</th>
               </tr>
             </thead>
             <tbody>
               {data.map((row, idx) => (
                 <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                   <td style={{ padding: '10px 12px', fontWeight: 600, color: '#475569' }}>{row.hour}</td>
-                  {sourceType !== 'eb' && <td style={{ padding: '10px 12px', color: '#16a34a', fontWeight: 600 }}>{row.generation}</td>}
-                  <td style={{ padding: '10px 12px', color: '#1e293b' }}>{row.consumption}</td>
-                  {sourceType === 'dg' && <td style={{ padding: '10px 12px', color: '#ea580c' }}>{row.fuel}</td>}
-                  {sourceType !== 'dg' && <td style={{ padding: '10px 12px', color: '#64748b' }}>{row.voltage}</td>}
-                  {sourceType !== 'dg' && <td style={{ padding: '10px 12px', color: '#64748b' }}>{row.current}</td>}
+                  {sourceType !== 'eb' && <td style={{ padding: '10px 12px', color: '#16a34a', fontWeight: 600, textAlign: 'center' }}>{row.generation}</td>}
+                  <td style={{ padding: '10px 12px', color: '#1e293b', textAlign: 'center' }}>{row.consumption}</td>
                 </tr>
               ))}
             </tbody>
@@ -207,8 +469,8 @@ export default function PowerHouseDetail() {
 
   const renderMajorEquipment = (typeFilter) => {
     const filteredEquipment = typeFilter 
-      ? majorEquipment.filter(e => typeFilter.includes(e.type))
-      : majorEquipment;
+      ? computedEquipment.filter(e => typeFilter.includes(e.type))
+      : computedEquipment;
 
     const categories = [...new Set(filteredEquipment.map(e => e.type))];
     
@@ -262,107 +524,139 @@ export default function PowerHouseDetail() {
     );
   };
 
-  const renderEB = () => (
-    <>
-      <div className="detail-kpi-row">
-        <div className="detail-kpi-card">
-          <div className="kpi-label">Main Grid Capacity</div>
-          <div className="kpi-value">2000 kVA</div>
-          <div className="kpi-label">Supply: 11kV HT</div>
-        </div>
-        <div className="detail-kpi-card">
-          <div className="kpi-label">Today's Consumption</div>
-          <div className="kpi-value">838 Units</div>
-          <div className="kpi-label">Estimated: ₹4,500</div>
-        </div>
-      </div>
-      {renderFinancials('eb')}
-      <div className="detail-chart-block">
-        <h4>Hourly Grid Consumption</h4>
-        <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={hourlyEB}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="hour" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="consumption" fill="#2563eb" name="Grid Load (kWh)" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-      {renderComparisonChart()}
-      {renderHourlyLog('eb')}
-      {renderMajorEquipment(['Transformer', 'Panel'])}
-    </>
-  );
+  const renderEB = () => {
+    const ebTotal = computedCombined.reduce((sum, d) => sum + d.eb, 0);
+    const displayEbTotal = ebTotal > 0 ? `${ebTotal.toFixed(0)} Units` : '0 Units';
+    const displayEstBill = ebTotal > 0 ? `Estimated: ₹${(ebTotal * 5.3).toFixed(0)}` : 'Estimated: ₹0';
+    
+    const totalTransformerCapacity = phData?.transformers ? phData.transformers.reduce((sum, t) => {
+      const load = parseFloat(t.load) || 0;
+      return sum + load;
+    }, 0) : 0;
+    const displayGridCap = totalTransformerCapacity > 0 ? `${totalTransformerCapacity} kVA` : '0 kVA';
 
-  const renderDG = () => (
-    <>
-      <div className="detail-kpi-row">
-        <div className="detail-kpi-card">
-          <div className="kpi-label">Diesel Inventory</div>
-          <div className="kpi-value">1,250 L</div>
-          <div className="kpi-label">Full Tank: 2,000 L</div>
+    return (
+      <>
+        <div className="detail-kpi-row">
+          <div className="detail-kpi-card">
+            <div className="kpi-label">Main Grid Capacity</div>
+            <div className="kpi-value">{displayGridCap}</div>
+            <div className="kpi-label">Supply: 11kV HT</div>
+          </div>
+          <div className="detail-kpi-card">
+            <div className="kpi-label">Today's Consumption</div>
+            <div className="kpi-value">{displayEbTotal}</div>
+            <div className="kpi-label">{displayEstBill}</div>
+          </div>
         </div>
-        <div className="detail-kpi-card">
-          <div className="kpi-label">Today's Fuel Use</div>
-          <div className="kpi-value">121 L</div>
-          <div className="kpi-label">Cost: ₹8,200</div>
+        {renderFinancials('eb')}
+        <div className="detail-chart-block">
+          <h4>Hourly Grid Consumption</h4>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={computedEB}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="hour" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="consumption" fill="#2563eb" name="Grid Load (Units)" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
-      </div>
-      {renderFinancials('dg')}
-      <div className="detail-chart-block">
-        <h4>Hourly DG Generation vs Consumption</h4>
-        <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={hourlyDG}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="hour" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="generation" fill="#ea580c" name="DG Gen (kWh)" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="consumption" fill="#475569" name="Campus Load (kWh)" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-      {renderComparisonChart()}
-      {renderHourlyLog('dg')}
-      {renderMajorEquipment(['Generator'])}
-    </>
-  );
+        {renderComparisonChart()}
+        {renderHourlyLog('eb')}
+        {renderMajorEquipment(['Transformer', 'Panel'])}
+      </>
+    );
+  };
+
+  const renderDG = () => {
+    const dgFuelUsed = (phData && phData.dgDailyFuel) ? phData.dgDailyFuel : 0;
+    const displayDgFuel = dgFuelUsed > 0 ? `${dgFuelUsed} L` : '0 L';
+    const displayDgCost = dgFuelUsed > 0 ? `Cost: ₹${(dgFuelUsed * 98).toFixed(0)}` : 'Cost: ₹0';
+
+    const totalFuelCap = phData?.dgSets ? phData.dgSets.reduce((sum, d) => {
+      const cap = parseFloat(d.fuelCap) || 0;
+      return sum + cap;
+    }, 0) : 0;
+    const displayFullTank = totalFuelCap > 0 ? `Full Tank: ${totalFuelCap} L` : 'Full Tank: 0 L';
+
+    return (
+      <>
+        <div className="detail-kpi-row">
+          <div className="detail-kpi-card">
+            <div className="kpi-label">Diesel Inventory</div>
+            <div className="kpi-value">Not Tracked</div>
+            <div className="kpi-label">{displayFullTank}</div>
+          </div>
+          <div className="detail-kpi-card">
+            <div className="kpi-label">Today's Fuel Use</div>
+            <div className="kpi-value">{displayDgFuel}</div>
+            <div className="kpi-label">{displayDgCost}</div>
+          </div>
+        </div>
+        {renderFinancials('dg')}
+        <div className="detail-chart-block">
+          <h4>Hourly DG Consumption</h4>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={computedDG}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="hour" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="consumption" fill="#ea580c" name="Campus Load (Units)" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        {renderComparisonChart()}
+        {renderHourlyLog('dg')}
+        {renderMajorEquipment(['Generator'])}
+      </>
+    );
+  };
 
   const renderSolar = () => {
     const isMonth = timeRange === 'month';
-    const chartData = isMonth ? monthWiseData : dailyPower;
+    const chartData = isMonth ? (trendData.monthly || []) : computedDailyPower;
     const xKey = isMonth ? 'month' : 'date';
+
+    const solarTotal = computedCombined.reduce((sum, d) => sum + d.solar, 0);
+    const displaySolarTotal = solarTotal > 0 ? `${solarTotal.toFixed(0)} Units` : '0 Units';
+
+    const solarUsageTotal = computedSolar.reduce((sum, d) => sum + d.consumption, 0);
+    const displaySolarUsage = solarUsageTotal > 0 ? `${solarUsageTotal.toFixed(0)} Units` : '0 Units';
+
+    const displayBalance = (solarTotal - solarUsageTotal) > 0 ? `${(solarTotal - solarUsageTotal).toFixed(0)} Units` : '0 Units';
+
+    const totalSolarPanels = phData?.solarPv ? phData.solarPv.reduce((sum, s) => {
+      const panels = parseInt(s.panels) || 0;
+      return sum + panels;
+    }, 0) : 0;
 
     return (
       <>
         <div className="detail-kpi-row">
           <div className="detail-kpi-card" style={{ borderLeft: '4px solid #eab308' }}>
             <div className="kpi-label">Solar Panel Units</div>
-            <div className="kpi-value">450 Units</div>
+            <div className="kpi-value">{totalSolarPanels} Units</div>
             <div className="kpi-label">Installed Base</div>
           </div>
           <div className="detail-kpi-card" style={{ borderLeft: '4px solid #16a34a' }}>
             <div className="kpi-label">Total Yield Today</div>
-            <div className="kpi-value">325 Units</div>
+            <div className="kpi-value">{displaySolarTotal}</div>
             <div className="kpi-label">Energy Generated</div>
           </div>
           <div className="detail-kpi-card" style={{ borderLeft: '4px solid #3b82f6' }}>
             <div className="kpi-label">Today's Usage</div>
-            <div className="kpi-value">180 Units</div>
+            <div className="kpi-value">{displaySolarUsage}</div>
             <div className="kpi-label">Solar Power Consumed</div>
           </div>
           <div className="detail-kpi-card" style={{ borderLeft: '4px solid #9333ea' }}>
             <div className="kpi-label">Balance Power</div>
-            <div className="kpi-value">145 Units</div>
+            <div className="kpi-value">{displayBalance}</div>
             <div className="kpi-label">Excess Energy</div>
           </div>
-          <div className="detail-kpi-card" style={{ borderLeft: '4px solid #0f172a' }}>
-            <div className="kpi-label">Today's Savings</div>
-            <div className="kpi-value">₹4,200</div>
-            <div className="kpi-label">Financial Offset</div>
-          </div>
+
         </div>
         
         <div className="detail-chart-block">
@@ -371,19 +665,27 @@ export default function PowerHouseDetail() {
             <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Current (Today)</span>
           </div>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={hourlySolar}>
+            <BarChart data={computedSolar}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="hour" />
               <YAxis />
               <Tooltip />
               <Legend />
-              <Bar dataKey="generation" fill="#eab308" name="Generated (kWh)" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="consumption" fill="#3b82f6" name="Consumed (kWh)" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="generation" fill="#eab308" name="Generated (Units)" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="consumption" fill="#3b82f6" name="Consumed (Units)" radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 16, gap: '16px' }}>
+          {timeRange === 'day' && (
+            <input 
+              type="month" 
+              value={selectedMonth} 
+              onChange={(e) => setSelectedMonth(e.target.value)} 
+              style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', color: '#1e293b' }} 
+            />
+          )}
           <div style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '10px' }}>
             {['day', 'month'].map(r => (
               <button 
@@ -405,7 +707,7 @@ export default function PowerHouseDetail() {
               <XAxis dataKey={xKey} />
               <YAxis />
               <Tooltip />
-              <Line type="monotone" dataKey={isMonth ? 'solar' : 'solarGen'} stroke="#eab308" strokeWidth={3} dot={{ r: 4 }} name="Generated (kWh)" />
+              <Line type="monotone" dataKey={isMonth ? 'solar' : 'solarGen'} stroke="#eab308" strokeWidth={3} dot={{ r: 4 }} name="Generated (Units)" />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -418,7 +720,7 @@ export default function PowerHouseDetail() {
               <XAxis dataKey={xKey} />
               <YAxis />
               <Tooltip />
-              <Line type="monotone" dataKey={isMonth ? 'eb' : 'consumption'} stroke="#3b82f6" strokeWidth={3} dot={{ r: 4 }} name="Consumed (kWh)" />
+              <Line type="monotone" dataKey={isMonth ? 'eb' : 'consumption'} stroke="#3b82f6" strokeWidth={3} dot={{ r: 4 }} name="Consumed (Units)" />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -429,98 +731,101 @@ export default function PowerHouseDetail() {
     );
   };
 
-  const renderMain = () => (
-    <>
-      <div className="detail-kpi-row">
-        <div className="detail-kpi-card" style={{ borderLeft: '4px solid #1976d2' }}>
-          <div className="kpi-label">Total Campus Load</div>
-          <div className="kpi-value">1.66 MW</div>
-          <div className="kpi-label">Real-time Peak</div>
-        </div>
-        <div className="detail-kpi-card" style={{ borderLeft: '4px solid #16a34a' }}>
-          <div className="kpi-label">Renewable Contribution</div>
-          <div className="kpi-value">38%</div>
-          <div className="kpi-label">Solar Mix Today</div>
-        </div>
-        <div className="detail-kpi-card" style={{ borderLeft: '4px solid #ea580c' }}>
-          <div className="kpi-label">Power Reliability</div>
-          <div className="kpi-value">99.9%</div>
-          <div className="kpi-label">Grid + DG Uptime</div>
-        </div>
-      </div>
+  const renderMain = () => {
+    const peakLoadKwh = computedCombined.length > 0 ? Math.max(...computedCombined.map(d => d.total)) : 0;
+    const peakLoadMw = (peakLoadKwh / 1000).toFixed(2);
+    const displayPeakMw = peakLoadMw > 0 ? `${peakLoadMw} MW` : '0 MW';
 
-      <div className="detail-chart-block">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h4 style={{ margin: 0 }}>Combined Energy Mix (Hourly)</h4>
-          <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Total Campus Consumption</span>
-        </div>
-        <ResponsiveContainer width="100%" height={350}>
-          <AreaChart data={combinedHourly}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="hour" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Area type="monotone" dataKey="eb" stackId="1" stroke="#2563eb" fill="#2563eb" fillOpacity={0.6} name="Grid (EB)" />
-            <Area type="monotone" dataKey="solar" stackId="1" stroke="#eab308" fill="#eab308" fillOpacity={0.6} name="Solar" />
-            <Area type="monotone" dataKey="dg" stackId="1" stroke="#ea580c" fill="#ea580c" fillOpacity={0.6} name="DG Backup" />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+    const totalEnergy = computedCombined.reduce((sum, d) => sum + d.total, 0);
+    const solarTotalForMix = computedCombined.reduce((sum, d) => sum + d.solar, 0);
+    const solarMixPct = totalEnergy > 0 ? Math.round((solarTotalForMix / totalEnergy) * 100) : 0;
+    const displaySolarMix = `${solarMixPct}%`;
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginTop: '24px' }}>
-        <div className="detail-inner-card">
-          <h4 style={{ marginTop: 0 }}>Energy Distribution</h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {[
-              { label: 'Grid (EB)', value: 62, color: '#2563eb' },
-              { label: 'Solar', value: 31, color: '#eab308' },
-              { label: 'DG Backup', value: 7, color: '#ea580c' }
-            ].map(item => (
-              <div key={item.label}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 4 }}>
-                  <span>{item.label}</span>
-                  <span style={{ fontWeight: 700 }}>{item.value}%</span>
+    const ebTotalForDist = computedCombined.reduce((sum, d) => sum + d.eb, 0);
+    const dgTotalForDist = computedCombined.reduce((sum, d) => sum + d.dg, 0);
+    const totalMixForDist = ebTotalForDist + solarTotalForMix + dgTotalForDist;
+    const ebPct = totalMixForDist > 0 ? Math.round((ebTotalForDist / totalMixForDist) * 100) : 0;
+    const solarPct = totalMixForDist > 0 ? Math.round((solarTotalForMix / totalMixForDist) * 100) : 0;
+    const dgPct = totalMixForDist > 0 ? Math.round((dgTotalForDist / totalMixForDist) * 100) : 0;
+
+    return (
+      <>
+        <div className="detail-kpi-row">
+          <div className="detail-kpi-card" style={{ borderLeft: '4px solid #1976d2' }}>
+            <div className="kpi-label">Total Campus Load</div>
+            <div className="kpi-value">{displayPeakMw}</div>
+            <div className="kpi-label">Real-time Peak</div>
+          </div>
+          <div className="detail-kpi-card" style={{ borderLeft: '4px solid #16a34a' }}>
+            <div className="kpi-label">Renewable Contribution</div>
+            <div className="kpi-value">{displaySolarMix}</div>
+            <div className="kpi-label">Solar Mix Today</div>
+          </div>
+
+        </div>
+
+        <div className="detail-chart-block">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h4 style={{ margin: 0 }}>Combined Energy Mix (Hourly)</h4>
+            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Total Campus Consumption</span>
+          </div>
+          <ResponsiveContainer width="100%" height={350}>
+            <AreaChart data={computedCombined}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="hour" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Area type="monotone" dataKey="eb" stackId="1" stroke="#2563eb" fill="#2563eb" fillOpacity={0.6} name="Grid (EB)" />
+              <Area type="monotone" dataKey="solar" stackId="1" stroke="#eab308" fill="#eab308" fillOpacity={0.6} name="Solar" />
+              <Area type="monotone" dataKey="dg" stackId="1" stroke="#ea580c" fill="#ea580c" fillOpacity={0.6} name="DG Backup" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div style={{ maxWidth: '600px', margin: '24px auto 0' }}>
+          <div className="detail-inner-card">
+            <h4 style={{ marginTop: 0 }}>Energy Distribution</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                { label: 'Grid (EB)', value: ebPct, color: '#2563eb' },
+                { label: 'Solar', value: solarPct, color: '#eab308' },
+                { label: 'DG Backup', value: dgPct, color: '#ea580c' }
+              ].map(item => (
+                <div key={item.label}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 4 }}>
+                    <span>{item.label}</span>
+                    <span style={{ fontWeight: 700 }}>{item.value}%</span>
+                  </div>
+                  <div style={{ height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${item.value}%`, background: item.color }} />
+                  </div>
                 </div>
-                <div style={{ height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${item.value}%`, background: item.color }} />
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
-        <div className="detail-inner-card">
-          <h4 style={{ marginTop: 0 }}>System Alerts</h4>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ padding: '8px 12px', background: '#fffbeb', borderLeft: '4px solid #f59e0b', borderRadius: '4px', fontSize: '0.8rem' }}>
-              <strong>Maintenance:</strong> Solar Inverter A3 is offline for string cleaning.
-            </div>
-            <div style={{ padding: '8px 12px', background: '#f0fdf4', borderLeft: '4px solid #10b981', borderRadius: '4px', fontSize: '0.8rem' }}>
-              <strong>Optimization:</strong> APFC Panel achieved 0.99 PF during peak load.
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  );
+      </>
+    );
+  };
 
   const renderStaff = () => (
     <div style={{ marginTop: 16 }}>
       <div className="detail-kpi-row" style={{ marginBottom: 24 }}>
         <div className="detail-kpi-card">
           <div className="kpi-label">Total Staff</div>
-          <div className="kpi-value">{powerhouseStaff.length}</div>
+          <div className="kpi-value">{computedStaff.length}</div>
           <div className="kpi-label">On-duty Roster</div>
         </div>
         <div className="detail-kpi-card">
           <div className="kpi-label">Present Today</div>
-          <div className="kpi-value">{powerhouseStaff.filter(s => s.attendance === 'Present').length}</div>
+          <div className="kpi-value">{computedStaff.filter(s => s.attendance === 'Present').length}</div>
           <div className="kpi-label">Available Operators</div>
         </div>
       </div>
 
       <div className="responsive-grid">
-        {powerhouseStaff.map(staff => (
+        {computedStaff.map(staff => (
           <div key={staff.id} className="detail-inner-card" style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
             <div style={{ width: 60, height: 60, borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 800, color: '#64748b', border: '2px solid #e2e8f0' }}>
               {staff.name.split(' ').map(n => n[0]).join('')}
@@ -528,9 +833,6 @@ export default function PowerHouseDetail() {
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h4 style={{ margin: 0, color: '#1e293b' }}>{staff.name}</h4>
-                <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, background: staff.attendance === 'Present' ? '#dcfce7' : '#fee2e2', color: staff.attendance === 'Present' ? '#166534' : '#991b1b' }}>
-                  {staff.attendance}
-                </span>
               </div>
               <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600, marginTop: 2 }}>{staff.role}</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -549,29 +851,42 @@ export default function PowerHouseDetail() {
   return (
     <div className="unit-detail-container">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 28 }}>
-        <h2 style={{ margin: 0 }}>Power House Dashboard</h2>
-        <div className="tab-container-responsive" style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '12px' }}>
-          {['main', 'solar', 'dg', 'eb', 'staff'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                padding: '8px 20px',
-                borderRadius: '8px',
-                border: 'none',
-                background: activeTab === tab ? '#fff' : 'transparent',
-                color: activeTab === tab ? '#1976d2' : '#64748b',
-                fontWeight: 700,
-                cursor: 'pointer',
-                boxShadow: activeTab === tab ? '0 2px 8px rgba(0,0,0,0.08)' : 'none',
-                textTransform: 'uppercase',
-                fontSize: '0.8rem',
-                transition: 'all 0.2s'
-              }}
-            >
-              {tab}
-            </button>
-          ))}
+        <div>
+          <h2 style={{ margin: 0 }}>Power House Dashboard</h2>
+          <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '4px 0 0 0' }}>Real-time and historic grid, solar, and DG backup metrics.</p>
+        </div>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <input 
+            type="date"
+            value={selectedDate} 
+            onChange={(e) => setSelectedDate(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            style={{ padding: '5px 12px', borderRadius: '20px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', fontWeight: 700, fontSize: '0.8rem', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+          />
+          <div className="tab-container-responsive" style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '12px' }}>
+            {['main', 'solar', 'dg', 'eb', 'staff'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  padding: '8px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: activeTab === tab ? '#fff' : 'transparent',
+                  color: activeTab === tab ? '#1976d2' : '#64748b',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  boxShadow: activeTab === tab ? '0 2px 8px rgba(0,0,0,0.08)' : 'none',
+                  textTransform: 'uppercase',
+                  fontSize: '0.8rem',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -586,7 +901,7 @@ export default function PowerHouseDetail() {
         <ul style={{ color: '#475569', fontSize: '0.9rem', lineHeight: '1.6' }}>
           <li>Peak load recorded yesterday at 19:15 (1.66 MW).</li>
           <li>Solar plant performance is 94% of theoretical maximum for current season.</li>
-          <li>DG fuel efficiency: 3.2 kWh/Litre (within standard range).</li>
+          <li>DG fuel efficiency: 3.2 Units/Litre (within standard range).</li>
         </ul>
       </div>
     </div>

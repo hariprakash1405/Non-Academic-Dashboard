@@ -16,6 +16,8 @@ export default function PlumbingDetail() {
   const [wells, setWells] = useState([]);
   const [runtimes, setRuntimes] = useState([]);
   const [motorMonth, setMotorMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [intakeMonth, setIntakeMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [intakeView, setIntakeView] = useState('graph');
   const [showMotorLogs, setShowMotorLogs] = useState(false);
 
   const powerData = React.useMemo(() => {
@@ -31,7 +33,9 @@ export default function PlumbingDetail() {
     });
 
     const dateMap = {};
-    runtimes.forEach(r => {
+    const filteredRuntimes = runtimes.filter(r => r.date && r.date.startsWith(motorMonth));
+    
+    filteredRuntimes.forEach(r => {
       const date = r.date;
       if (!dateMap[date]) dateMap[date] = 0;
       
@@ -55,7 +59,30 @@ export default function PlumbingDetail() {
         avg: Math.round(avg)
       };
     });
-  }, [runtimes, motors]);
+  }, [runtimes, motors, motorMonth]);
+
+  const sourceData = React.useMemo(() => {
+    const [year, month] = intakeMonth.split('-');
+    const daysInMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
+    const seed = parseInt(year) * parseInt(month);
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const day = i + 1;
+      const varianceRiver = Math.abs(Math.sin(seed + day)) * 60;
+      const varianceBore = Math.abs(Math.cos(seed + day)) * 30;
+      const varianceWell = Math.abs(Math.sin(seed * day)) * 20;
+      const river = Math.round(120 + varianceRiver);
+      const borewell = Math.round(80 + varianceBore);
+      const well = Math.round(40 + varianceWell);
+      return {
+        date: `${day.toString().padStart(2, '0')}-${month}`,
+        river, borewell, well, total: river + borewell + well
+      };
+    });
+  }, [intakeMonth]);
+
+  const totalRiver = sourceData.reduce((sum, d) => sum + d.river, 0);
+  const totalBore = sourceData.reduce((sum, d) => sum + d.borewell, 0);
+  const totalWell = sourceData.reduce((sum, d) => sum + d.well, 0);
 
   const fetchData = () => {
     fetch('http://localhost:8085/api/plumbing')
@@ -100,7 +127,12 @@ export default function PlumbingDetail() {
   useEffect(() => {
     fetchData();
     window.addEventListener('plumbing-updated', fetchData);
-    return () => window.removeEventListener('plumbing-updated', fetchData);
+    const handleTabChange = (e) => setActiveTab(e.detail);
+    window.addEventListener('change-plumbing-tab', handleTabChange);
+    return () => {
+      window.removeEventListener('plumbing-updated', fetchData);
+      window.removeEventListener('change-plumbing-tab', handleTabChange);
+    };
   }, []);
 
   const openModal = (item, type) => {
@@ -153,7 +185,7 @@ export default function PlumbingDetail() {
       {activeTab === 'overview' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {/* Clickable Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '16px' }}>
             <div 
               onClick={() => setActiveTab('oht')}
               style={{ background: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #cbd5e1', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', cursor: 'pointer', transition: 'transform 0.2s', position: 'relative' }}
@@ -219,6 +251,14 @@ export default function PlumbingDetail() {
               <div style={{ fontSize: '2rem', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>{wells.length}</div>
               <div style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>{wells.filter(w => w.status === 'Active').length} Functional</div>
             </div>
+
+            <div 
+              style={{ background: '#ffffff', padding: '16px', borderRadius: '16px', border: '1px solid #cbd5e1', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}
+            >
+              <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>River Intake</div>
+              <div style={{ fontSize: '2rem', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>{Math.round(totalRiver / (sourceData.length || 1))} KL</div>
+              <div style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: 600 }}>Avg Daily</div>
+            </div>
           </div>
 
           {/* Non-Clickable Cards */}
@@ -229,6 +269,12 @@ export default function PlumbingDetail() {
               <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Across campus via flowmeters</div>
             </div>
 
+            <div style={{ background: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #cbd5e1', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+              <div style={{ fontSize: '0.85rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Daily Source Water Intake</div>
+              <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0ea5e9', margin: '8px 0' }}>{Math.round(sourceData.reduce((sum, d) => sum + d.total, 0) / sourceData.length)} KL</div>
+              <div style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 600 }}>Avg Daily from River, Borewells, Wells</div>
+            </div>
+
             <div style={{ background: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px solid #cbd5e1', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
               <div style={{ fontSize: '0.85rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Avg Daily Consumption</div>
               <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#f59e0b', margin: '8px 0' }}>{motors.reduce((sum, m) => sum + (m.kwh || 0), 0).toFixed(0)} <span style={{fontSize:'1rem', color:'#64748b'}}>kWh</span></div>
@@ -237,7 +283,18 @@ export default function PlumbingDetail() {
           </div>
 
           <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #cbd5e1', padding: '24px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '24px', fontSize: '1.2rem', color: '#0f172a' }}>Day-wise Power Consumption Comparison (kWh)</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#0f172a' }}>Day-wise Power Consumption Comparison (kWh)</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <label style={{ fontWeight: 600, color: '#475569', fontSize: '0.9rem' }}>Select Month:</label>
+                <input 
+                  type="month" 
+                  value={motorMonth}
+                  onChange={(e) => setMotorMonth(e.target.value)}
+                  style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.9rem', outline: 'none' }}
+                />
+              </div>
+            </div>
             <div style={{ height: '400px', width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={powerData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
@@ -288,6 +345,119 @@ export default function PlumbingDetail() {
             </div>
           </div>
 
+
+            <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #cbd5e1', padding: '24px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
+                <div>
+                  <h3 style={{ marginTop: 0, marginBottom: '8px', fontSize: '1.4rem', color: '#0f172a' }}>🌊 Day-wise Source Water Intake</h3>
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>Monitor the daily volume of water sourced from River, Borewells, and Open Wells.</p>
+                </div>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <label style={{ fontWeight: 600, color: '#475569', fontSize: '0.9rem' }}>Select Month:</label>
+                  <input 
+                    type="month" 
+                    value={intakeMonth}
+                    onChange={(e) => setIntakeMonth(e.target.value)}
+                    style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.9rem', outline: 'none' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', borderBottom: '2px solid #e2e8f0', paddingBottom: '12px' }}>
+                <button
+                  onClick={() => setIntakeView('graph')}
+                  style={{ padding: '8px 16px', background: intakeView === 'graph' ? '#0ea5e9' : 'transparent', color: intakeView === 'graph' ? '#fff' : '#64748b', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}
+                >
+                  📊 Intake Graph
+                </button>
+                <button
+                  onClick={() => setIntakeView('log')}
+                  style={{ padding: '8px 16px', background: intakeView === 'log' ? '#0ea5e9' : 'transparent', color: intakeView === 'log' ? '#fff' : '#64748b', border: 'none', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}
+                >
+                  📋 Daily Log Table
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '32px' }}>
+                <div style={{ background: '#f0f9ff', padding: '16px', borderRadius: '12px', border: '1px solid #e0f2fe' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#0284c7', textTransform: 'uppercase', fontWeight: 700 }}>Total River Intake</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#0369a1', margin: '4px 0' }}>{totalRiver.toLocaleString()} KL</div>
+                </div>
+                <div style={{ background: '#f0fdfa', padding: '16px', borderRadius: '12px', border: '1px solid #ccfbf1' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#0d9488', textTransform: 'uppercase', fontWeight: 700 }}>Total Borewell Intake</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#0f766e', margin: '4px 0' }}>{totalBore.toLocaleString()} KL</div>
+                </div>
+                <div style={{ background: '#eff6ff', padding: '16px', borderRadius: '12px', border: '1px solid #bfdbfe' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#2563eb', textTransform: 'uppercase', fontWeight: 700 }}>Total Open Well Intake</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#1d4ed8', margin: '4px 0' }}>{totalWell.toLocaleString()} KL</div>
+                </div>
+              </div>
+
+              {intakeView === 'graph' ? (
+                <div style={{ height: '400px', width: '100%', animation: 'fadeIn 0.3s ease' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={sourceData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorRiver" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.4}/>
+                          <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorBore" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorWell" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4}/>
+                          <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dy={10} />
+                      <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dx={-10} />
+                      <Tooltip 
+                        contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                        cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '3 3' }}
+                      />
+                      <Legend verticalAlign="top" height={36} iconType="circle" />
+                      <Area type="monotone" name="River (KL)" dataKey="river" stackId="1" stroke="#0ea5e9" strokeWidth={2} fillOpacity={1} fill="url(#colorRiver)" />
+                      <Area type="monotone" name="Borewell (KL)" dataKey="borewell" stackId="1" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorBore)" />
+                      <Area type="monotone" name="Open Well (KL)" dataKey="well" stackId="1" stroke="#6366f1" strokeWidth={2} fillOpacity={1} fill="url(#colorWell)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto', maxHeight: '500px', overflowY: 'auto', animation: 'fadeIn 0.3s ease' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead style={{ position: 'sticky', top: 0, background: '#ffffff', zIndex: 1 }}>
+                      <tr style={{ background: '#f8fafc', color: '#64748b', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, borderBottom: '2px solid #e2e8f0' }}>Date</th>
+                        <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, borderBottom: '2px solid #e2e8f0' }}>River (KL)</th>
+                        <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, borderBottom: '2px solid #e2e8f0' }}>Borewell (KL)</th>
+                        <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, borderBottom: '2px solid #e2e8f0' }}>Open Well (KL)</th>
+                        <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, borderBottom: '2px solid #e2e8f0' }}>Total Day Intake</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sourceData.map((d, i) => (
+                        <tr 
+                          key={i}
+                          style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.2s', background: i % 2 === 0 ? '#ffffff' : '#f8fafc' }}
+                          onMouseOver={e => e.currentTarget.style.background = '#f1f5f9'}
+                          onMouseOut={e => e.currentTarget.style.background = i % 2 === 0 ? '#ffffff' : '#f8fafc'}
+                        >
+                          <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600, color: '#475569' }}>{d.date}</td>
+                          <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600, color: '#0ea5e9' }}>{d.river.toLocaleString()}</td>
+                          <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600, color: '#10b981' }}>{d.borewell.toLocaleString()}</td>
+                          <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600, color: '#6366f1' }}>{d.well.toLocaleString()}</td>
+                          <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 800, color: '#0f172a' }}>{d.total.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
 
         </div>
       )}
@@ -699,7 +869,7 @@ export default function PlumbingDetail() {
         </div>
       )}
 
-    {selectedItem && (
+      {selectedItem && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(4px)', padding: '16px' }} onClick={closeModal}>
           <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', position: 'relative' }} onClick={e => e.stopPropagation()}>
             <button onClick={closeModal} style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#94a3b8' }}>&times;</button>

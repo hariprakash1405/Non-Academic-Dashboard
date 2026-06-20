@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// ocrSemaphore limits concurrent Python OCR jobs to prevent CPU/RAM exhaustion
+var ocrSemaphore = make(chan struct{}, 1)
+
 func (h *APIHandler) HandleGetMessData(w http.ResponseWriter, r *http.Request) {
 	MessCache.mu.Lock()
 	MessCache.data = nil
@@ -157,22 +160,104 @@ func (h *APIHandler) HandleAddMessStaff(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var req models.MessStaff
+	var req []models.MessStaff
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := h.DB.Create(&req).Error; err != nil {
-		http.Error(w, "Failed to save staff", http.StatusInternalServerError)
-		return
+	if len(req) > 0 {
+		if err := h.DB.Create(&req).Error; err != nil {
+			http.Error(w, "Failed to save staff", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "Staff added successfully"})
 }
 
+func (h *APIHandler) HandleUpdateMessStaff(w http.ResponseWriter, r *http.Request) {
+	MessCache.mu.Lock()
+	MessCache.data = nil
+	MessCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	var req models.MessStaff
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.DB.Save(&req).Error; err != nil {
+		http.Error(w, "Failed to update staff", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Staff updated successfully"})
+}
+
+func (h *APIHandler) HandleDeleteMessStaff(w http.ResponseWriter, r *http.Request) {
+	MessCache.mu.Lock()
+	MessCache.data = nil
+	MessCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "ID is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.DB.Delete(&models.MessStaff{}, id).Error; err != nil {
+		http.Error(w, "Failed to delete staff", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Staff deleted successfully"})
+}
+
 func (h *APIHandler) HandleAddMessEquipment(w http.ResponseWriter, r *http.Request) {
+	MessCache.mu.Lock()
+	MessCache.data = nil
+	MessCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	var req []models.MessEquipment
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if len(req) > 0 {
+		if err := h.DB.Create(&req).Error; err != nil {
+			http.Error(w, "Failed to save equipment", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Equipment added successfully"})
+}
+
+func (h *APIHandler) HandleUpdateMessEquipment(w http.ResponseWriter, r *http.Request) {
 	MessCache.mu.Lock()
 	MessCache.data = nil
 	MessCache.mu.Unlock()
@@ -189,13 +274,39 @@ func (h *APIHandler) HandleAddMessEquipment(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := h.DB.Create(&req).Error; err != nil {
-		http.Error(w, "Failed to save equipment", http.StatusInternalServerError)
+	if err := h.DB.Save(&req).Error; err != nil {
+		http.Error(w, "Failed to update equipment", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"message": "Equipment added successfully"})
+	json.NewEncoder(w).Encode(map[string]string{"message": "Equipment updated successfully"})
+}
+
+func (h *APIHandler) HandleDeleteMessEquipment(w http.ResponseWriter, r *http.Request) {
+	MessCache.mu.Lock()
+	MessCache.data = nil
+	MessCache.mu.Unlock()
+
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "ID is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.DB.Delete(&models.MessEquipment{}, id).Error; err != nil {
+		http.Error(w, "Failed to delete equipment", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Equipment deleted successfully"})
 }
 
 func (h *APIHandler) HandleAddMessMenu(w http.ResponseWriter, r *http.Request) {
@@ -272,6 +383,10 @@ func (h *APIHandler) HandleAddMessMenuPDF(w http.ResponseWriter, r *http.Request
 
 	go func(filePath, bName, mYear string) {
 		defer os.Remove(filePath)
+
+		// Acquire semaphore token to prevent server overload
+		ocrSemaphore <- struct{}{}
+		defer func() { <-ocrSemaphore }()
 
 		cmd := exec.Command("python", "parse_pdf.py", filePath)
 		var out bytes.Buffer
