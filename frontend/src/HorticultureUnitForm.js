@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const API = 'http://localhost:8085/api/horticulture';
+const API = '/api/horticulture';
 const inp = { padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', width: '100%', boxSizing: 'border-box', background: '#fff' };
 const lbl = { display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem', fontWeight: 700, color: '#475569' };
 const sec = { background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '20px', marginBottom: '16px' };
@@ -333,7 +333,7 @@ export default function HorticultureUnitForm({ onDataSaved }) {
       )}
 
       {/* TABS */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', borderBottom: '2px solid #e2e8f0', paddingBottom: '12px', overflowX: 'auto' }}>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', paddingBottom: '12px', overflowX: 'auto' }}>
         {TABS.map(t => (
           <button
             key={t.key}

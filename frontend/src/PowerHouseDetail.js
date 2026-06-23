@@ -12,6 +12,10 @@ import {
   ResponsiveContainer,
   AreaChart,
   Area,
+  PieChart,
+  Pie,
+  Cell,
+  LabelList,
 } from 'recharts';
 
 const dailyPower = [
@@ -105,17 +109,50 @@ const powerhouseStaff = [
   { id: 5, name: 'Priya Dharshini', role: 'Asst. Operator', sector: 'EB', portion: 'LT Panel Room', attendance: 'Present', contact: '+91 98765 43214' },
 ];
 
+const feedersList = [
+  { id: '101', name: 'Chiller Plant Power 2', baseVal: 300 },
+  { id: '102', name: 'Temporary(Civil Works)', baseVal: 100 },
+  { id: '105', name: 'MV Panel 2', baseVal: 150 },
+  { id: '106', name: 'Training Academy', baseVal: 450 },
+  { id: '107', name: 'MV Panel 3', baseVal: 200 },
+  { id: '108', name: 'Boys Dining Power', baseVal: 1100 },
+  { id: '117', name: 'Language Lab', baseVal: 150 },
+  { id: '119', name: 'Pearl Hostel Power', baseVal: 220 },
+  { id: '125', name: 'Day Scholar Dining Hall power', baseVal: 250 },
+  { id: '126', name: 'Biotech Lab', baseVal: 50 },
+  { id: '127', name: 'IT Lab', baseVal: 180 },
+  { id: '128', name: 'SM & FM Lab', baseVal: 250 },
+  { id: '129', name: 'Aero Power / Lighting', baseVal: 550 },
+  { id: '130', name: 'Internet Centre', baseVal: 45 },
+  { id: '131', name: 'CA Block Power Room', baseVal: 350 },
+  { id: '133', name: 'CA lab A/C', baseVal: 280 },
+  { id: '134', name: 'New Library', baseVal: 220 },
+  { id: '135', name: 'Pearl Hostel Lighting', baseVal: 260 },
+  { id: '136', name: 'Spinning Lab', baseVal: 65 },
+  { id: '137', name: 'Lsb1 Corridor Lighting', baseVal: 320 },
+  { id: '138', name: 'Lsb2 Corridor Lighting', baseVal: 280 },
+  { id: '139', name: 'Ganga and Yamuna hostel', baseVal: 750 },
+  { id: '140', name: 'New Mech Light', baseVal: 300 },
+  { id: '141', name: 'Narmadha Hostel and Dining hall', baseVal: 220 },
+  { id: '142', name: 'D.D block', baseVal: 90 },
+  { id: '143', name: 'Boys Hostel Mini Cafe', baseVal: 30 },
+  { id: '144', name: 'Powerhouse Solar', baseVal: 80 },
+  { id: '145', name: 'Diamond Hostel', baseVal: 0 }
+];
+
 export default function PowerHouseDetail() {
   const [activeTab, setActiveTab] = React.useState('main');
   const [timeRange, setTimeRange] = React.useState('day');
   const [selectedMonth, setSelectedMonth] = React.useState('2026-05');
+  const [feederGraphId, setFeederGraphId] = React.useState('101');
+  const [feederTimeTab, setFeederTimeTab] = React.useState('day');
 
   const [phData, setPhData] = useState(null);
   const [selectedDate, setSelectedDate] = useState('');
   const [trendData, setTrendData] = useState({ daily: [], monthly: [] });
 
   const fetchData = useCallback(() => {
-    const url = selectedDate ? `http://localhost:8085/api/powerhouse?date=${selectedDate}` : `http://localhost:8085/api/powerhouse`;
+    const url = selectedDate ? `/api/powerhouse?date=${selectedDate}` : `/api/powerhouse`;
     fetch(url)
       .then(res => res.json())
       .then(data => {
@@ -132,7 +169,7 @@ export default function PowerHouseDetail() {
   }, [selectedDate]);
 
   const fetchTrendData = useCallback(() => {
-    fetch(`http://localhost:8085/api/powerhouse/trend?month=${selectedMonth}`)
+    fetch(`/api/powerhouse/trend?month=${selectedMonth}`)
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -249,7 +286,12 @@ export default function PowerHouseDetail() {
           id: id++,
           name: `DG Set - ${d.ratingMake || 'N/A'}`,
           type: 'Generator',
-          spec: `Fuel Cap: ${d.fuelCap || '-'} L, Count: ${d.count || '-'}`,
+          spec: (
+            <>
+              <div>Fuel Cap: {d.fuelCap || '-'} L, Count: {d.count || '-'}</div>
+              <div>Last Service: {d.lastService || '-'}</div>
+            </>
+          ),
           status: d.status || 'Working',
           isActive: d.status === 'Working',
           health: d.status === 'Working' ? 92 : 40
@@ -260,9 +302,14 @@ export default function PowerHouseDetail() {
       phData.ups.forEach(u => {
         list.push({
           id: id++,
-          name: `UPS - ${u.ratingMake || 'N/A'}`,
+          name: `UPS - ${u.ratingMake || u.location || 'N/A'}`,
           type: 'Panel',
-          spec: `Loc: ${u.location || '-'}, Battery Cap: ${u.batteryCap || '-'}`,
+          spec: (
+            <>
+              <div>Loc: {u.location || '-'}, Battery Cap: {u.batteryCap || '-'}</div>
+              <div>Last AMC: {u.lastAmc || '-'} | Next AMC: {u.nextAmc || '-'}</div>
+            </>
+          ),
           status: u.status || 'Working',
           isActive: u.status === 'Working',
           health: u.status === 'Working' ? 95 : 35
@@ -275,7 +322,14 @@ export default function PowerHouseDetail() {
           id: id++,
           name: `Solar PV - ${s.location || 'N/A'}`,
           type: 'Inverter',
-          spec: `Cap: ${s.capacity || '-'}, Panels: ${s.panels || '-'} (${s.panelWatts || '-'}W)`,
+          spec: (
+            <>
+              <div>Cap: {s.capacity || '-'}, Panels: {s.panels || '-'} ({s.panelWatts || '-'}W)</div>
+              <div>Inverter: {s.inverterRating || '-'} | Last Service: {s.inverterService || '-'}</div>
+              <div>Type: {s.type || '-'} | Cleaning: {s.cleaningFreq || '-'}</div>
+              <div>Status: {s.status || '-'}</div>
+            </>
+          ),
           status: s.status || 'Working',
           isActive: s.status === 'Working',
           health: s.status === 'Working' ? 97 : 45
@@ -305,19 +359,19 @@ export default function PowerHouseDetail() {
       const solarTotal = computedCombined.reduce((sum, d) => sum + d.solar, 0);
       const solarMonthly = (trendData.monthly || []).reduce((sum, d) => sum + (d.solar || 0), 0);
       daily = `₹${(solarTotal * 5.3).toFixed(0)} Savings`;
-      monthly = `₹${(solarMonthly * 5.3).toLocaleString()} Savings`;
+      monthly = `₹${(solarMonthly * 5.3).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Savings`;
       color = '#16a34a';
     } else if (type === 'dg') {
       const dgFuelUsed = (phData && phData.dgDailyFuel) ? phData.dgDailyFuel : 0;
       const dgMonthlyFuel = (trendData.monthly || []).reduce((sum, d) => sum + (d.dg || 0), 0);
       daily = `₹${(dgFuelUsed * 98).toFixed(0)}`;
-      monthly = `₹${(dgMonthlyFuel * 98).toLocaleString()}`;
+      monthly = `₹${(dgMonthlyFuel * 98).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
       color = '#ea580c';
     } else if (type === 'eb') {
       const ebTotal = computedCombined.reduce((sum, d) => sum + d.eb, 0);
       const ebMonthly = (trendData.monthly || []).reduce((sum, d) => sum + (d.eb || 0), 0);
       daily = `₹${(ebTotal * 5.3).toFixed(0)}`;
-      monthly = `₹${(ebMonthly * 5.3).toLocaleString()}`;
+      monthly = `₹${(ebMonthly * 5.3).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
       color = '#2563eb';
     }
 
@@ -369,25 +423,25 @@ export default function PowerHouseDetail() {
           <div className="detail-chart-block">
             <h4>{timeRange === 'month' ? 'Month-wise' : 'Day-wise'} Diesel Usage Trend</h4>
             <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={data}>
+              <BarChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey={xKey} />
+                <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} angle={timeRange === 'day' ? -45 : 0} textAnchor={timeRange === 'day' ? 'end' : 'middle'} height={timeRange === 'day' ? 60 : 30} />
                 <YAxis />
                 <Tooltip />
-                <Line type="monotone" dataKey={timeRange === 'month' ? 'dg' : 'dgFuel'} stroke="#ea580c" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} name="Diesel Usage (L)" />
-              </LineChart>
+                <Bar dataKey={timeRange === 'month' ? 'dg' : 'dgFuel'} fill="#ea580c" radius={[4, 4, 0, 0]} name="Diesel Usage (L)" />
+              </BarChart>
             </ResponsiveContainer>
           </div>
           <div className="detail-chart-block">
             <h4>{timeRange === 'month' ? 'Month-wise' : 'Day-wise'} Energy Consumption Trend</h4>
             <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={data}>
+              <BarChart data={data}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey={xKey} />
+                <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} angle={timeRange === 'day' ? -45 : 0} textAnchor={timeRange === 'day' ? 'end' : 'middle'} height={timeRange === 'day' ? 60 : 30} />
                 <YAxis />
                 <Tooltip />
-                <Line type="monotone" dataKey={timeRange === 'month' ? 'dg' : 'consumption'} stroke="#1e293b" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} name="Consumption (Units)" />
-              </LineChart>
+                <Bar dataKey={timeRange === 'month' ? 'dg' : 'consumption'} fill="#1e293b" radius={[4, 4, 0, 0]} name="Consumption (Units)" />
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </>
@@ -425,14 +479,14 @@ export default function PowerHouseDetail() {
           </div>
         </div>
         <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={data}>
+          <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey={xKey} />
             <YAxis />
             <Tooltip />
             <Legend />
-            <Line type="monotone" dataKey={dataKey} stroke={strokeColor} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} name={chartName} />
-          </LineChart>
+            <Bar dataKey={dataKey} fill={strokeColor} radius={[4, 4, 0, 0]} name={chartName} />
+          </BarChart>
         </ResponsiveContainer>
       </div>
     );
@@ -535,6 +589,38 @@ export default function PowerHouseDetail() {
     }, 0) : 0;
     const displayGridCap = totalTransformerCapacity > 0 ? `${totalTransformerCapacity} kVA` : '0 kVA';
 
+    let peakConsumption = 0;
+    let nightConsumption = 0;
+    let offPeakConsumption = 0;
+
+    computedEB.forEach(d => {
+      if (!d.hour) return;
+      const parts = d.hour.split(':');
+      if (parts.length < 2) return;
+      const hourNum = parseInt(parts[0], 10);
+      
+      // Peak: 6 AM to 10 AM, 6 PM to 10 PM
+      if ((hourNum >= 6 && hourNum < 10) || (hourNum >= 18 && hourNum < 22)) {
+        peakConsumption += d.consumption;
+      } 
+      // Night: 10 PM to 6 AM
+      else if (hourNum >= 22 || hourNum < 6) {
+        nightConsumption += d.consumption;
+      } 
+      // Off Peak: 10 AM to 6 PM
+      else {
+        offPeakConsumption += d.consumption;
+      }
+    });
+
+    const totalEbForDist = peakConsumption + nightConsumption + offPeakConsumption;
+    const timeDistributionData = [
+      { name: 'Total Energy', value: totalEbForDist > 0 ? 100 : 0, val: totalEbForDist },
+      { name: 'Peak Hour', value: totalEbForDist > 0 ? parseFloat(((peakConsumption / totalEbForDist) * 100).toFixed(2)) : 0, val: peakConsumption },
+      { name: 'Night Hour', value: totalEbForDist > 0 ? parseFloat(((nightConsumption / totalEbForDist) * 100).toFixed(2)) : 0, val: nightConsumption },
+      { name: 'Off Peak Hour', value: totalEbForDist > 0 ? parseFloat(((offPeakConsumption / totalEbForDist) * 100).toFixed(2)) : 0, val: offPeakConsumption },
+    ];
+
     return (
       <>
         <div className="detail-kpi-row">
@@ -555,14 +641,102 @@ export default function PowerHouseDetail() {
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={computedEB}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="hour" />
-              <YAxis />
+              <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} angle={-45} textAnchor="end" height={50} />
+              <YAxis tick={{ fontSize: 12, fill: '#64748b', fontWeight: 600 }} />
               <Tooltip />
               <Bar dataKey="consumption" fill="#2563eb" name="Grid Load (Units)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
+
+        <div className="detail-chart-block" style={{ marginTop: '24px', background: '#fff', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+          <h4 style={{ textAlign: 'center', color: '#1d4ed8', fontSize: '1rem', marginBottom: '24px', textTransform: 'uppercase', fontWeight: 800 }}>
+            Daily Energy Shared during Peak, Night and off Peak Hours (in %)
+          </h4>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={timeDistributionData} margin={{ top: 30, right: 30, left: 0, bottom: 10 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 12, fontWeight: 700, fill: '#475569' }} />
+              <YAxis domain={[0, 120]} ticks={[0, 20, 40, 60, 80, 100, 120]} tick={{ fontSize: 12, fontWeight: 600 }} />
+              <Tooltip formatter={(value, name, props) => [`${value}% (${props.payload.val.toFixed(2)} kWh)`, 'Consumption']} />
+              <Bar dataKey="value" fill="#7e22ce" radius={[4, 4, 0, 0]} maxBarSize={70}>
+                <LabelList dataKey="value" position="top" style={{ fill: '#334155', fontWeight: 800, fontSize: '0.9rem' }} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
         {renderComparisonChart()}
+
+        <div style={{ marginTop: 40, padding: '24px', background: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, borderBottom: '2px solid #e2e8f0', paddingBottom: '12px', flexWrap: 'wrap', gap: '16px' }}>
+            <h4 style={{ fontSize: '1.2rem', color: '#0f172a', margin: 0 }}>EB Feeders & Sub-Meters Analytics</h4>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: '8px', padding: '4px' }}>
+                <button onClick={() => setFeederTimeTab('hour')} style={{ padding: '6px 12px', border: 'none', borderRadius: '6px', background: feederTimeTab === 'hour' ? '#fff' : 'transparent', color: feederTimeTab === 'hour' ? '#0f172a' : '#64748b', fontWeight: 600, cursor: 'pointer', boxShadow: feederTimeTab === 'hour' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>Hourly</button>
+                <button onClick={() => setFeederTimeTab('day')} style={{ padding: '6px 12px', border: 'none', borderRadius: '6px', background: feederTimeTab === 'day' ? '#fff' : 'transparent', color: feederTimeTab === 'day' ? '#0f172a' : '#64748b', fontWeight: 600, cursor: 'pointer', boxShadow: feederTimeTab === 'day' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>Daily</button>
+                <button onClick={() => setFeederTimeTab('month')} style={{ padding: '6px 12px', border: 'none', borderRadius: '6px', background: feederTimeTab === 'month' ? '#fff' : 'transparent', color: feederTimeTab === 'month' ? '#0f172a' : '#64748b', fontWeight: 600, cursor: 'pointer', boxShadow: feederTimeTab === 'month' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>Monthly</button>
+              </div>
+              {feederTimeTab === 'hour' && (
+                <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', color: '#1e293b' }} />
+              )}
+              {feederTimeTab === 'day' && (
+                <input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', color: '#1e293b' }} />
+              )}
+              <select value={feederGraphId} onChange={e => setFeederGraphId(e.target.value)} style={{ padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 600, color: '#334155' }}>
+                {feedersList.map(f => (
+                  <option key={f.id} value={f.id}>{f.name} ({f.id})</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          
+          <div style={{ width: '100%', height: 400, background: '#fff', borderRadius: '12px', padding: '24px', border: '1px solid #e2e8f0' }}>
+            {(() => {
+              const selectedFdr = feedersList.find(f => f.id === feederGraphId);
+              if (!selectedFdr) return null;
+              
+              let data = [];
+              if (feederTimeTab === 'hour') {
+                const hourMap = {};
+                Array.from({length: 24}).forEach((_, i) => {
+                  const hStr = `${i.toString().padStart(2, '0')}:00`;
+                  hourMap[hStr] = 0;
+                });
+                if (phData && phData.feederDynamic) {
+                  phData.feederDynamic.forEach(log => {
+                    if (log.feederId === feederGraphId && log.value) {
+                      hourMap[log.hour] = parseFloat(log.value) || 0;
+                    }
+                  });
+                }
+                data = Object.keys(hourMap).sort().map(k => ({ name: k, units: hourMap[k] }));
+              } else if (feederTimeTab === 'day') {
+                if (trendData && trendData.feederDaily && trendData.feederDaily[feederGraphId]) {
+                  data = trendData.feederDaily[feederGraphId].map(d => ({ name: d.date, units: d.units }));
+                }
+              } else {
+                if (trendData && trendData.feederMonthly && trendData.feederMonthly[feederGraphId]) {
+                  data = trendData.feederMonthly[feederGraphId].map(d => ({ name: d.month, units: d.units }));
+                }
+              }
+              return (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data} margin={{ top: 20, right: 30, left: 0, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} angle={feederTimeTab === 'day' ? -45 : 0} textAnchor={feederTimeTab === 'day' ? 'end' : 'middle'} height={60} />
+                    <YAxis tick={{ fontSize: 12, fill: '#64748b', fontWeight: 600 }} />
+                    <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontWeight: 600 }} cursor={{fill: '#f1f5f9'}} />
+                    <Bar dataKey="units" name="Energy Consumption (Units)" fill="#2dd4bf" radius={[4, 4, 0, 0]} maxBarSize={50}>
+                      {feederTimeTab === 'month' && <LabelList dataKey="units" position="top" style={{ fontSize: '0.75rem', fontWeight: 800, fill: '#0f172a' }} />}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              );
+            })()}
+          </div>
+        </div>
+
         {renderHourlyLog('eb')}
         {renderMajorEquipment(['Transformer', 'Panel'])}
       </>
@@ -600,8 +774,8 @@ export default function PowerHouseDetail() {
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={computedDG}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="hour" />
-              <YAxis />
+              <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} angle={-45} textAnchor="end" height={50} />
+              <YAxis tick={{ fontSize: 12, fill: '#64748b', fontWeight: 600 }} />
               <Tooltip />
               <Legend />
               <Bar dataKey="consumption" fill="#ea580c" name="Campus Load (Units)" radius={[4, 4, 0, 0]} />
@@ -667,8 +841,8 @@ export default function PowerHouseDetail() {
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={computedSolar}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="hour" />
-              <YAxis />
+              <XAxis dataKey="hour" tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} angle={-45} textAnchor="end" height={50} />
+              <YAxis tick={{ fontSize: 12, fill: '#64748b', fontWeight: 600 }} />
               <Tooltip />
               <Legend />
               <Bar dataKey="generation" fill="#eab308" name="Generated (Units)" radius={[3, 3, 0, 0]} />
@@ -748,6 +922,12 @@ export default function PowerHouseDetail() {
     const solarPct = totalMixForDist > 0 ? Math.round((solarTotalForMix / totalMixForDist) * 100) : 0;
     const dgPct = totalMixForDist > 0 ? Math.round((dgTotalForDist / totalMixForDist) * 100) : 0;
 
+    const donutData = [
+      { name: 'Grid (EB)', value: ebTotalForDist, color: '#2563eb' },
+      { name: 'Solar', value: solarTotalForMix, color: '#eab308' },
+      { name: 'DG Backup', value: dgTotalForDist, color: '#ea580c' }
+    ].filter(d => d.value > 0);
+
     return (
       <>
         <div className="detail-kpi-row">
@@ -783,25 +963,47 @@ export default function PowerHouseDetail() {
           </ResponsiveContainer>
         </div>
 
-        <div style={{ maxWidth: '600px', margin: '24px auto 0' }}>
+        <div style={{ maxWidth: '800px', margin: '24px auto 0' }}>
           <div className="detail-inner-card">
             <h4 style={{ marginTop: 0 }}>Energy Distribution</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {[
-                { label: 'Grid (EB)', value: ebPct, color: '#2563eb' },
-                { label: 'Solar', value: solarPct, color: '#eab308' },
-                { label: 'DG Backup', value: dgPct, color: '#ea580c' }
-              ].map(item => (
-                <div key={item.label}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 4 }}>
-                    <span>{item.label}</span>
-                    <span style={{ fontWeight: 700 }}>{item.value}%</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '32px', flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 250px', height: '220px' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={donutData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={70}
+                      outerRadius={95}
+                      paddingAngle={4}
+                      dataKey="value"
+                    >
+                      {donutData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => `${value.toFixed(1)} Units`} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{ flex: '1 1 250px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {[
+                  { label: 'Grid (EB)', value: ebPct, color: '#2563eb' },
+                  { label: 'Solar', value: solarPct, color: '#eab308' },
+                  { label: 'DG Backup', value: dgPct, color: '#ea580c' }
+                ].map(item => (
+                  <div key={item.label}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 6 }}>
+                      <span style={{ fontWeight: 600, color: '#334155' }}>{item.label}</span>
+                      <span style={{ fontWeight: 800, color: item.color }}>{item.value}%</span>
+                    </div>
+                    <div style={{ height: 10, background: '#f1f5f9', borderRadius: 5, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${item.value}%`, background: item.color, borderRadius: 5 }} />
+                    </div>
                   </div>
-                  <div style={{ height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${item.value}%`, background: item.color }} />
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </div>

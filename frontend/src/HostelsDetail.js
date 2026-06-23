@@ -63,6 +63,7 @@ export default function HostelsDetail({ currentUser }) {
   const isHostelUnitHead =
     currentUser?.role === 'unit_head' && currentUser?.unitName === 'Hostels';
   const [activeTab, setActiveTab] = React.useState('boys');
+  const [dashboardDate, setDashboardDate] = React.useState('Today');
   const [selectedBlock, setSelectedBlock] = React.useState(null);
   const [showIncidents, setShowIncidents] = React.useState(false);
   const [showComplaints, setShowComplaints] = React.useState(false);
@@ -135,7 +136,7 @@ export default function HostelsDetail({ currentUser }) {
   useEffect(() => {
     const fetchBackend = async () => {
       try {
-        const res = await fetch('http://localhost:8085/api/hostels');
+        const res = await fetch('/api/hostels');
         if (res.ok) {
           const data = await res.json();
           setBackendData(data);
@@ -180,9 +181,19 @@ export default function HostelsDetail({ currentUser }) {
     ? (isAll ? backendData.blocks : backendData.blocks.filter(b => b.gender === activeTab))
     : (isAll ? [...hostelBlocks.boys, ...hostelBlocks.girls] : hostelBlocks[activeTab]);
 
+  const targetDateStr = React.useMemo(() => {
+    if (dashboardDate === 'Today') return new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    const [y, m, d] = dashboardDate.split('-');
+    const localDate = new Date(y, m - 1, d);
+    return localDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  }, [dashboardDate]);
+
   const totalBeds = blocks.reduce((sum, b) => sum + b.beds, 0);
   let totalOccupied = blocks.reduce((sum, b) => sum + b.occupied, 0);
-  const totalAbsentUnexcused = blocks.reduce((sum, b) => sum + (b.attendanceUnexcused || 0), 0);
+  const totalAbsentUnexcused = blocks.reduce((sum, b) => {
+    const filteredAbsents = (b.absentList || []).filter(a => a.date === targetDateStr);
+    return sum + filteredAbsents.length;
+  }, 0);
 
   // Additional aggregate statistics for infrastructure and facilities
   const totalRooms = blocks.reduce((sum, b) => sum + (b.totalRooms || 0), 0);
@@ -198,7 +209,11 @@ export default function HostelsDetail({ currentUser }) {
 
   const todayBlockUsages = blocks.map(block => {
     const usages = backendData?.dailyUsage?.[block.name] || [];
-    const d = usages[usages.length - 1] || { water: 0, power: 0 };
+    let d = usages.find(u => u.date === targetDateStr);
+    if (!d && dashboardDate === 'Today') {
+       d = usages[usages.length - 1] || { water: 0, power: 0 };
+    }
+    if (!d) d = { water: 0, power: 0 };
     
     // Merge block-specific drafts
     let waterVal = d.water;
@@ -703,7 +718,7 @@ export default function HostelsDetail({ currentUser }) {
                             onChange={async (e) => {
                               const newStatus = e.target.value;
                               try {
-                                const res = await fetch('http://localhost:8085/api/hostels/update-complaint-status', {
+                                const res = await fetch('/api/hostels/update-complaint-status', {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({ id: t.id, status: newStatus })
@@ -759,6 +774,19 @@ export default function HostelsDetail({ currentUser }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, marginBottom: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <h2 style={{ margin: 0, color: '#0f172a' }}>Hostels Management</h2>
+          <input 
+            type="date"
+            value={dashboardDate === 'Today' ? new Date().toISOString().split('T')[0] : dashboardDate}
+            onChange={(e) => {
+              const todayStr = new Date().toISOString().split('T')[0];
+              if (e.target.value === todayStr || !e.target.value) {
+                setDashboardDate('Today');
+              } else {
+                setDashboardDate(e.target.value);
+              }
+            }}
+            style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.85rem', fontWeight: '600', background: '#fff', color: '#334155', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
+          />
 
         </div>
         <div className="tab-container-responsive" style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '12px' }}>
@@ -957,7 +985,7 @@ export default function HostelsDetail({ currentUser }) {
                     style={{ padding: '6px', background: '#fef2f2', borderRadius: '4px', textAlign: 'center', border: '1px solid #fecaca' }} 
                   >
                     <div style={{ fontSize: '0.6rem', color: '#991b1b', textTransform: 'uppercase', fontWeight: 800 }}>Absent (Unexcused)</div>
-                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#dc2626' }}>{block.attendanceUnexcused || 0}</div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#dc2626' }}>{(block.absentList || []).filter(a => a.date === targetDateStr).length}</div>
                   </div>
                 </div>
               </div>
@@ -1132,19 +1160,19 @@ export default function HostelsDetail({ currentUser }) {
       let subtitle = '';
 
       if (viewingAbsentListForAll) {
-        title = 'Absent (Unexcused) Students - All Visible Blocks';
+        title = `Absent (Unexcused) Students - All Visible Blocks (${targetDateStr})`;
         subtitle = `Across ${blocks.length} blocks`;
         blocks.forEach(b => {
           if (b.absentList && b.absentList.length > 0) {
-            absentList.push(...b.absentList.map(r => ({ ...r, blockName: b.name })));
+            absentList.push(...b.absentList.filter(a => a.date === targetDateStr).map(r => ({ ...r, blockName: b.name })));
           }
         });
       } else {
         const block = blocks.find(b => b.name === viewingAbsentListForBlock);
-        title = `${viewingAbsentListForBlock} - Absent (Unexcused) Students`;
+        title = `${viewingAbsentListForBlock} - Absent (Unexcused) Students (${targetDateStr})`;
         subtitle = `Showing unexcused absences for this block`;
         if (block && block.absentList && block.absentList.length > 0) {
-          absentList = block.absentList.map(r => ({ ...r, blockName: block.name }));
+          absentList = block.absentList.filter(a => a.date === targetDateStr).map(r => ({ ...r, blockName: block.name }));
         }
       }
 
@@ -1396,9 +1424,9 @@ export default function HostelsDetail({ currentUser }) {
           </div>
 
           <div 
-            onClick={() => { if (block?.attendanceUnexcused > 0) setViewingAbsentListForBlock(block.name); }}
-            style={{ background: '#fff', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', cursor: block?.attendanceUnexcused > 0 ? 'pointer' : 'default', transition: 'all 0.2s' }}
-            onMouseEnter={e => { if (block?.attendanceUnexcused > 0) { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)'; } }}
+            onClick={() => { if ((block?.absentList || []).filter(a => a.date === targetDateStr).length > 0) setViewingAbsentListForBlock(block.name); }}
+            style={{ background: '#fff', padding: '24px', borderRadius: '16px', border: '1px solid #e2e8f0', cursor: (block?.absentList || []).filter(a => a.date === targetDateStr).length > 0 ? 'pointer' : 'default', transition: 'all 0.2s' }}
+            onMouseEnter={e => { if ((block?.absentList || []).filter(a => a.date === targetDateStr).length > 0) { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)'; } }}
             onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; }}
           >
             <h4 style={{ margin: '0 0 16px 0', color: '#64748b', fontSize: '0.8rem', textTransform: 'uppercase' }}>Attendance Status</h4>
@@ -1408,7 +1436,7 @@ export default function HostelsDetail({ currentUser }) {
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }}></div>
                   Absent (Unexcused)
                 </span>
-                <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.1rem' }}>{block?.attendanceUnexcused || 0}</span>
+                <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '1.1rem' }}>{(block?.absentList || []).filter(a => a.date === targetDateStr).length}</span>
               </div>
             </div>
           </div>
@@ -1703,7 +1731,7 @@ export default function HostelsDetail({ currentUser }) {
               }
 
               try {
-                const res = await fetch('http://localhost:8085/api/hostels/raise-complaint', {
+                const res = await fetch('/api/hostels/raise-complaint', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -1911,7 +1939,7 @@ export default function HostelsDetail({ currentUser }) {
               }
 
               try {
-                const res = await fetch('http://localhost:8085/api/hostels/rename-block', {
+                const res = await fetch('/api/hostels/rename-block', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ oldName: renameTarget.oldName, newName: newNameClean })
@@ -2052,7 +2080,7 @@ export default function HostelsDetail({ currentUser }) {
               }
 
               try {
-                const res = await fetch('http://localhost:8085/api/hostels/add-block', {
+                const res = await fetch('/api/hostels/add-block', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -2494,7 +2522,7 @@ export default function HostelsDetail({ currentUser }) {
                 id="btn-confirm-delete"
                 onClick={async () => {
                   try {
-                    const res = await fetch('http://localhost:8085/api/hostels/delete-block', {
+                    const res = await fetch('/api/hostels/delete-block', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ name: deleteTarget })

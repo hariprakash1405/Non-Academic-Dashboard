@@ -107,6 +107,21 @@ func (h *APIHandler) HandlePowerHouseData(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	for _, l := range payload.FeederDynamic {
+		l.Date = payload.Date
+		if l.Value == "" {
+			continue
+		}
+		var existing models.PhFeederDynamicLog
+		tx.Where("date = ? AND feeder_id = ? AND hour = ?", l.Date, l.FeederID, l.Hour).First(&existing)
+		if existing.ID != 0 {
+			existing.Value = l.Value
+			tx.Save(&existing)
+		} else {
+			tx.Create(&l)
+		}
+	}
+
 	// Save Daily Metric
 	var metric models.PhDailyMetric
 	tx.Where("date = ?", payload.Date).First(&metric)
@@ -158,6 +173,10 @@ func (h *APIHandler) GetPowerHouseData(w http.ResponseWriter, r *http.Request) {
 				payload.DgDynamic = append(payload.DgDynamic, log)
 			}
 		}
+
+		var feederLogs []models.PhFeederDynamicLog
+		h.DB.Where("date = ?", date).Find(&feederLogs)
+		payload.FeederDynamic = feederLogs
 	} else {
 		// Just get the most recent date's dynamic data if date not provided
 		var lastMetric models.PhDailyMetric
@@ -176,6 +195,10 @@ func (h *APIHandler) GetPowerHouseData(w http.ResponseWriter, r *http.Request) {
 				payload.DgDynamic = append(payload.DgDynamic, log)
 			}
 		}
+
+		var feederLogs []models.PhFeederDynamicLog
+		h.DB.Where("date = ?", lastMetric.Date).Find(&feederLogs)
+		payload.FeederDynamic = feederLogs
 	}
 
 	// Always get static data regardless of date since it's global inventory
@@ -205,9 +228,21 @@ type MonthTrendPoint struct {
 	EB    float64 `json:"eb"`
 }
 
+type FeederDailyPoint struct {
+	Date  string  `json:"date"`
+	Units float64 `json:"units"`
+}
+
+type FeederMonthlyPoint struct {
+	Month string  `json:"month"`
+	Units float64 `json:"units"`
+}
+
 type PowerHouseTrendPayload struct {
-	Daily   []DailyTrendPoint `json:"daily"`
-	Monthly []MonthTrendPoint `json:"monthly"`
+	Daily         []DailyTrendPoint                   `json:"daily"`
+	Monthly       []MonthTrendPoint                   `json:"monthly"`
+	FeederDaily   map[string][]FeederDailyPoint   `json:"feederDaily"`
+	FeederMonthly map[string][]FeederMonthlyPoint `json:"feederMonthly"`
 }
 
 func (h *APIHandler) GetPowerHouseTrendData(w http.ResponseWriter, r *http.Request) {
@@ -373,9 +408,64 @@ func (h *APIHandler) GetPowerHouseTrendData(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
+	// 3. Feeder Trends
+	feederDaily := make(map[string][]FeederDailyPoint)
+	feederMonthly := make(map[string][]FeederMonthlyPoint)
+
+	var feederLogsMonth []models.PhFeederDynamicLog
+	h.DB.Where("date LIKE ?", month+"-%").Find(&feederLogsMonth)
+
+	feederDailyMap := make(map[string]map[string]float64)
+	for _, l := range feederLogsMonth {
+		if feederDailyMap[l.FeederID] == nil {
+			feederDailyMap[l.FeederID] = make(map[string]float64)
+		}
+		val := 0.0
+		fmt.Sscanf(l.Value, "%f", &val)
+		feederDailyMap[l.FeederID][l.Date] += val
+	}
+
+	for fId, dates := range feederDailyMap {
+		var points []FeederDailyPoint
+		for day := 1; day <= lastDay; day++ {
+			dateStr := fmt.Sprintf("%s-%02d", month, day)
+			points = append(points, FeederDailyPoint{Date: dateStr, Units: dates[dateStr]})
+		}
+		feederDaily[fId] = points
+	}
+
+	var feederLogsYear []models.PhFeederDynamicLog
+	h.DB.Where("date LIKE ?", yearStr+"-%").Find(&feederLogsYear)
+
+	feederMonthlyMap := make(map[string]map[int]float64)
+	for _, l := range feederLogsYear {
+		if len(l.Date) >= 7 {
+			var logY, logM int
+			fmt.Sscanf(l.Date[:7], "%d-%d", &logY, &logM)
+			if logM >= 1 && logM <= 12 {
+				if feederMonthlyMap[l.FeederID] == nil {
+					feederMonthlyMap[l.FeederID] = make(map[int]float64)
+				}
+				val := 0.0
+				fmt.Sscanf(l.Value, "%f", &val)
+				feederMonthlyMap[l.FeederID][logM] += val
+			}
+		}
+	}
+
+	for fId, months := range feederMonthlyMap {
+		var points []FeederMonthlyPoint
+		for i, name := range monthsName {
+			points = append(points, FeederMonthlyPoint{Month: name, Units: months[i+1]})
+		}
+		feederMonthly[fId] = points
+	}
+
 	payload := PowerHouseTrendPayload{
-		Daily:   dailyTrends,
-		Monthly: monthlyTrends,
+		Daily:         dailyTrends,
+		Monthly:       monthlyTrends,
+		FeederDaily:   feederDaily,
+		FeederMonthly: feederMonthly,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

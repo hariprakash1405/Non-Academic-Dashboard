@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const API = 'http://localhost:8085/api/transport';
+const API = '/api/transport';
 const inp = { padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', width: '100%', boxSizing: 'border-box', background: '#fff' };
 const lbl = { display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem', fontWeight: 700, color: '#475569' };
 const sec = { background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '20px', marginBottom: '16px' };
@@ -874,7 +874,7 @@ export default function TransportUnitForm({ vehicles: vProp = [], drivers: dProp
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', overflowX: 'auto', background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '0 8px' }}>
+      <div style={{ display: 'flex', overflowX: 'auto', background: '#fff', padding: '0 8px' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             background: 'none', border: 'none', padding: '12px 16px', cursor: 'pointer',

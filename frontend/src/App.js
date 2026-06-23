@@ -41,6 +41,7 @@ import HorticultureUnitForm from './HorticultureUnitForm';
 import PlumbingDetail from './PlumbingDetail';
 import PlumbingUnitForm from './PlumbingUnitForm';
 import PowerHouseUnitForm from './PowerHouseUnitForm';
+import DevAdminPage from './DevAdminPage';
 import { buildExecutivePayload, exportExecutivePdf, exportExecutiveExcel } from './exportReports';
 
 /** Unit names with open maintenance / compliance alerts (drives count + red highlight). */
@@ -149,32 +150,7 @@ const summaryData = [
   { label: 'Compliance %', value: '87%', color: '#c2185b' },
 ];
 
-/** Dean / admin: full dashboard + all unit details; cannot edit unit data forms. */
-const DEAN_ADMIN_USERS = [
-  {
-    id: 'dean-admin',
-    name: 'Dean / Admin',
-    username: 'dean.admin',
-    password: 'Dean@2026',
-    role: 'admin',
-  },
-];
 
-const UNIT_HEAD_USERS = [
-  { id: 'head-power', name: 'Power House Head', username: 'power.head', password: 'Power@123', unitName: 'Power House' },
-  { id: 'head-chiller', name: 'Chiller Plant Head', username: 'chiller.head', password: 'Chiller@123', unitName: 'Chiller Plant' },
-  { id: 'head-transport', name: 'Transport Head', username: 'transport.head', password: 'Transport@123', unitName: 'Transport' },
-  { id: 'head-hostels', name: 'Hostels Head', username: 'hostels.head', password: 'Hostels@123', unitName: 'Hostels' },
-  { id: 'head-mess', name: 'Mess Head', username: 'mess.head', password: 'Mess@123', unitName: 'Mess' },
-  { id: 'head-ro', name: 'RO Plant Head', username: 'ro.head', password: 'RO@123', unitName: 'RO Plant' },
-  { id: 'head-sports', name: 'Sports/Gym Head', username: 'sports.head', password: 'Sports@123', unitName: 'Sports/Gym' },
-  { id: 'head-medical', name: 'Medical Centre Head', username: 'medical.head', password: 'Medical@123', unitName: 'Medical Centre' },
-  { id: 'head-campus', name: 'Campus Maintenance Head', username: 'campus.head', password: 'Campus@123', unitName: 'Campus Maint.' },
-  { id: 'head-plumbing', name: 'Plumbing Head', username: 'plumbing.head', password: 'Plumbing@123', unitName: 'Plumbing' },
-  { id: 'head-stp', name: 'STP Head', username: 'stp.head', password: 'STP@123', unitName: 'STP' },
-  { id: 'head-trc', name: 'TRC / NMC Head', username: 'trc.head', password: 'TRC@123', unitName: 'TRC / NMC' },
-  { id: 'head-horticulture', name: 'Horticulture Head', username: 'horticulture.head', password: 'Horticulture@123', unitName: 'Horticulture' },
-];
 
 function getKpiBand(score) {
   if (score < 60) return 'red';
@@ -443,7 +419,7 @@ function normalizeSession(raw) {
   try {
     const s = JSON.parse(raw);
     if (!s || !s.id) return null;
-    if (s.role === 'admin' || s.role === 'unit_head') return s;
+    if (s.role === 'admin' || s.role === 'unit_head' || s.role === 'dev_admin') return s;
     if (s.unitName) return { ...s, role: 'unit_head' };
     return null;
   } catch (err) {
@@ -491,7 +467,7 @@ function Dashboard() {
   const [hortiData, setHortiData] = useState(null);
 
   useEffect(() => {
-    fetch('http://localhost:8085/api/horticulture')
+    fetch('/api/horticulture')
       .then(res => res.json())
       .then(data => setHortiData(data))
       .catch(() => {});
@@ -676,15 +652,7 @@ function Dashboard() {
         </div>
       </div>
 
-      {hasRed && (
-        <div className="dashboard-alert-banner" role="alert" style={{ background: '#fff', border: '1px solid #ffcdd2', borderLeft: '4px solid #d32f2f', borderRadius: 12, padding: '16px 20px', marginBottom: 32, display: 'flex', gap: 16, alignItems: 'center', boxShadow: '0 2px 10px rgba(211,47,47,0.05)' }}>
-          <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#ffebee', color: '#c62828', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', fontWeight: 'bold' }}>!</div>
-          <div style={{ color: '#c62828', fontSize: '0.95rem' }}>
-            <strong style={{ display: 'block', marginBottom: 4 }}>Action Required</strong>
-            One or more units are in the critical band. Please review the list below.
-          </div>
-        </div>
-      )}
+
 
       {/* Maintenance Categories (Tiles) */}
       <div style={{ marginBottom: 32 }}>
@@ -857,26 +825,37 @@ function LoginPage({ onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const admin = DEAN_ADMIN_USERS.find((u) => u.username === username && u.password === password);
-    if (admin) {
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      if (!response.ok) {
+        if (response.status === 401) {
+          setError('Invalid credentials.');
+        } else if (response.status === 403) {
+          setError('Account is disabled.');
+        } else {
+          setError('Server error during login.');
+        }
+        return;
+      }
+      const user = await response.json();
       setError('');
-      onLogin({ id: admin.id, name: admin.name, role: 'admin' });
-      return;
+      onLogin({
+        id: user.id,
+        name: user.name,
+        role: user.role,
+        unitName: user.unitName,
+        username: user.username,
+        dashboardAccess: user.dashboardAccess
+      });
+    } catch (err) {
+      setError('Failed to connect to the backend server.');
     }
-    const head = UNIT_HEAD_USERS.find((u) => u.username === username && u.password === password);
-    if (!head) {
-      setError('Invalid credentials. Use Dean/Admin or your unit head account.');
-      return;
-    }
-    setError('');
-    onLogin({
-      id: head.id,
-      name: head.name,
-      role: 'unit_head',
-      unitName: head.unitName,
-    });
   };
 
   return (
@@ -924,10 +903,7 @@ function LoginPage({ onLogin }) {
           </div>
           <div className="login-google-logo">G</div>
         </div>
-        <div className="login-helper">
-          Dean/Admin: <strong>dean.admin</strong> / Dean@2026 — Unit head example: <strong>power.head</strong> /
-          Power@123
-        </div>
+
       </form>
     </div>
   );
@@ -984,12 +960,14 @@ function UnitDetailWrapper({ currentUser }) {
 
   const [showUnitModal, setShowUnitModal] = useState(false);
 
-  if (currentUser.role === 'unit_head' && currentUser.unitName !== unitName) {
+  const myUnits = currentUser.role === 'unit_head' ? [currentUser.unitName, ...(currentUser.accessibleUnits ? currentUser.accessibleUnits.split(',').map(u => u.trim()) : [])].filter(Boolean) : [];
+  
+  if (currentUser.role === 'unit_head' && !myUnits.includes(unitName)) {
     return <Navigate to={`/unit/${encodeURIComponent(currentUser.unitName)}`} replace />;
   }
 
   const canManageForm =
-    currentUser.role === 'unit_head' && currentUser.unitName === unitName;
+    currentUser.role === 'dev_admin' || (currentUser.role === 'unit_head' && myUnits.includes(unitName));
   const fields = UNIT_FORM_FIELDS[unitName] || [];
   const submittedValues = readUnitSubmittedValues(unitName);
   const submittedRows = fields
@@ -1147,6 +1125,8 @@ function UnitDetailWrapper({ currentUser }) {
 
 function PostLoginRedirect({ currentUser }) {
   if (currentUser.role === 'admin') return <Navigate to="/" replace />;
+  if (currentUser.role === 'dev_admin') return <Navigate to="/devadmin" replace />;
+  if (currentUser.dashboardAccess) return <Navigate to="/" replace />;
   return <Navigate to={`/unit/${encodeURIComponent(currentUser.unitName)}`} replace />;
 }
 
@@ -1392,7 +1372,7 @@ function ProfileModal({ currentUser, onClose, onLogout }) {
 
 function DashboardRoute({ currentUser }) {
   if (!currentUser) return <Navigate to="/login" replace />;
-  if (currentUser.role !== 'admin') {
+  if (currentUser.role !== 'admin' && currentUser.role !== 'dev_admin' && !currentUser.dashboardAccess) {
     return <Navigate to={`/unit/${encodeURIComponent(currentUser.unitName)}`} replace />;
   }
   return <Dashboard />;
@@ -1508,21 +1488,25 @@ function AppRoutes({ currentUser, onLogin, onLogout }) {
     <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
       {/* Permanent Sidebar */}
       {currentUser && (
-        <aside style={{ width: sidebarOpen ? '260px' : '0px', background: '#0c2340', color: '#fff', display: 'flex', flexDirection: 'column', flexShrink: 0, boxShadow: '2px 0 10px rgba(0,0,0,0.1)', transition: 'width 0.3s ease', overflowX: 'hidden' }}>
-          <div style={{ padding: '24px 20px', fontSize: '1.25rem', fontWeight: 'bold', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: 12, width: 260 }}>
+        <aside style={{ width: sidebarOpen ? '260px' : '0px', background: '#ffffff', color: '#000000', display: 'flex', flexDirection: 'column', flexShrink: 0, boxShadow: '2px 0 10px rgba(0,0,0,0.05)', transition: 'width 0.3s ease', overflowX: 'hidden' }}>
+          <div style={{ height: '59px', boxSizing: 'border-box', padding: '0 20px', fontSize: '1.25rem', fontWeight: 'bold', borderBottom: 'none', display: 'flex', alignItems: 'center', gap: 12, width: 260 }}>
             <div style={{ width: 32, height: 32, background: '#b8972e', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1rem', flexShrink: 0 }}>✦</div>
-            <Link to="/" onClick={closeSidebarOnMobile} style={{ color: '#fff', textDecoration: 'none', whiteSpace: 'nowrap' }}>Campus Services</Link>
+            <Link to="/" onClick={closeSidebarOnMobile} style={{ color: '#000000', textDecoration: 'none', whiteSpace: 'nowrap' }}>Campus Services</Link>
           </div>
-          <div style={{ padding: '16px 20px 8px', fontSize: '0.75rem', textTransform: 'uppercase', color: '#8a99a8', fontWeight: 700, letterSpacing: '0.05em', width: 260 }}>
-            {currentUser.role === 'admin' ? 'Management' : 'Page Navigation'}
+          <div style={{ padding: '16px 20px 8px', fontSize: '0.75rem', textTransform: 'uppercase', color: '#000000', fontWeight: 700, letterSpacing: '0.05em', width: 260 }}>
+            {currentUser.role === 'admin' || currentUser.role === 'dev_admin' ? 'Management' : 'Page Navigation'}
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 10px', width: 260 }}>
-            {currentUser.role === 'admin' ? (
+            {currentUser.role === 'admin' || currentUser.role === 'dev_admin' ? (
               <>
-
-
+                {currentUser.role === 'dev_admin' && (
+                  <div style={{ padding: '10px 12px', margin: '4px 0', cursor: 'pointer', fontSize: '0.9rem', color: '#000000', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }} onClick={() => { navigate('/devadmin'); closeSidebarOnMobile(); }} onMouseEnter={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = '#f1f5f9'; }} onMouseLeave={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = 'transparent'; }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#9c27b0', flexShrink: 0 }}></div>
+                    Developer Admin
+                  </div>
+                )}
                 
-                <div style={{ padding: '8px 8px 4px', fontSize: '0.75rem', textTransform: 'uppercase', color: '#8a99a8', fontWeight: 700, letterSpacing: '0.05em' }}>
+                <div style={{ padding: '8px 8px 4px', fontSize: '0.75rem', textTransform: 'uppercase', color: '#000000', fontWeight: 700, letterSpacing: '0.05em' }}>
                   All Units
                 </div>
                 {modules.map(mod => {
@@ -1531,7 +1515,7 @@ function AppRoutes({ currentUser, onLogin, onLogout }) {
                   const isPlumbingActive = mod.name === 'Plumbing' && location.pathname.includes('/unit/Plumbing');
                   return (
                     <React.Fragment key={mod.name}>
-                      <div style={{ padding: '10px 12px', margin: '4px 0', cursor: 'pointer', fontSize: '0.9rem', color: '#e2e8f0', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }} onClick={() => { navigate(`/unit/${encodeURIComponent(mod.name)}`); closeSidebarOnMobile(); }} onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.background = 'transparent'; }}>
+                      <div style={{ padding: '10px 12px', margin: '4px 0', cursor: 'pointer', fontSize: '0.9rem', color: '#000000', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }} onClick={() => { navigate(`/unit/${encodeURIComponent(mod.name)}`); closeSidebarOnMobile(); }} onMouseEnter={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = '#f1f5f9'; }} onMouseLeave={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = 'transparent'; }}>
                         <div style={{ width: 8, height: 8, borderRadius: '50%', background: band === 'red' ? '#ef5350' : band === 'amber' ? '#ffca28' : '#66bb6a', flexShrink: 0 }}></div>
                         {mod.name}
                       </div>
@@ -1545,9 +1529,9 @@ function AppRoutes({ currentUser, onLogin, onLogout }) {
                             { id: 'ahu', title: '🏢 AHU Units' },
                             { id: 'split', title: '🌬️ A/C & Cold Room Units' }
                           ].map(tab => (
-                            <div key={tab.id} style={{ padding: '8px 12px', margin: '2px 0', cursor: 'pointer', fontSize: '0.85rem', color: '#cbd5e1', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
+                            <div key={tab.id} style={{ padding: '8px 12px', margin: '2px 0', cursor: 'pointer', fontSize: '0.85rem', color: '#000000', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
                                  onClick={() => { window.dispatchEvent(new CustomEvent('change-chiller-tab', { detail: tab.id })); closeSidebarOnMobile(); }} 
-                                 onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#cbd5e1'; e.currentTarget.style.background = 'transparent'; }}>
+                                 onMouseEnter={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = '#f1f5f9'; }} onMouseLeave={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = 'transparent'; }}>
                               <span style={{ color: '#b8972e', flexShrink: 0 }}>•</span>
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.title}</span>
                             </div>
@@ -1565,9 +1549,9 @@ function AppRoutes({ currentUser, onLogin, onLogout }) {
                             { id: 'borewells', title: '💧 Borewells' },
                             { id: 'wells', title: '🌊 Open Wells' }
                           ].map(tab => (
-                            <div key={tab.id} style={{ padding: '8px 12px', margin: '2px 0', cursor: 'pointer', fontSize: '0.85rem', color: '#cbd5e1', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
+                            <div key={tab.id} style={{ padding: '8px 12px', margin: '2px 0', cursor: 'pointer', fontSize: '0.85rem', color: '#000000', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
                                  onClick={() => { window.dispatchEvent(new CustomEvent('change-plumbing-tab', { detail: tab.id })); closeSidebarOnMobile(); }} 
-                                 onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#cbd5e1'; e.currentTarget.style.background = 'transparent'; }}>
+                                 onMouseEnter={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = '#f1f5f9'; }} onMouseLeave={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = 'transparent'; }}>
                               <span style={{ color: '#b8972e', flexShrink: 0 }}>•</span>
                               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.title}</span>
                             </div>
@@ -1580,63 +1564,75 @@ function AppRoutes({ currentUser, onLogin, onLogout }) {
               </>
             ) : (
               <>
-                <div style={{ padding: '10px 12px', margin: '4px 0', cursor: 'pointer', fontSize: '0.9rem', color: '#e2e8f0', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }} onClick={() => { navigate(`/unit/${encodeURIComponent(currentUser.unitName)}`); closeSidebarOnMobile(); }} onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.background = 'transparent'; }}>
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4db6ac', flexShrink: 0 }}></div>
-                  My Unit Dashboard
-                </div>
+                {Array.from(new Set([currentUser.unitName, ...(currentUser.accessibleUnits ? currentUser.accessibleUnits.split(',').map(u => u.trim()) : [])].filter(Boolean))).map(unit => {
+                  const isChillerPlantActive = unit === 'Chiller Plant' && location.pathname.includes('/unit/Chiller');
+                  const isPlumbingActive = unit === 'Plumbing' && location.pathname.includes('/unit/Plumbing');
+                  const isUnitActive = location.pathname.includes(`/unit/${encodeURIComponent(unit)}`);
 
-                {currentUser?.unitName === 'Chiller Plant' ? (
-                  <>
-                    {[
-                      { id: 'overview', title: 'Overview' },
-                      { id: 'specs', title: '📋 Technical Specifications' },
-                      { id: 'log', title: 'Operating Log' },
-                      { id: 'billing', title: 'Billing Params' },
-                      { id: 'ahu', title: '🏢 AHU Units' },
-                      { id: 'split', title: '🌬️ A/C & Cold Room Units' }
-                    ].map(tab => (
-                      <div key={tab.id} style={{ padding: '10px 12px', margin: '4px 0', cursor: 'pointer', fontSize: '0.85rem', color: '#e2e8f0', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
-                           onClick={() => { window.dispatchEvent(new CustomEvent('change-chiller-tab', { detail: tab.id })); closeSidebarOnMobile(); }} 
-                           onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.background = 'transparent'; }}>
-                        <span style={{ color: '#b8972e', flexShrink: 0 }}>•</span>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.title}</span>
+                  return (
+                    <React.Fragment key={unit}>
+                      <div style={{ padding: '10px 12px', margin: '4px 0', cursor: 'pointer', fontSize: '0.9rem', color: '#000000', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }} onClick={() => { navigate(`/unit/${encodeURIComponent(unit)}`); closeSidebarOnMobile(); }} onMouseEnter={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = '#f1f5f9'; }} onMouseLeave={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = 'transparent'; }}>
+                        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4db6ac', flexShrink: 0 }}></div>
+                        {unit} Dashboard
                       </div>
-                    ))}
-                  </>
-                ) : currentUser?.unitName === 'Plumbing' ? (
-                  <>
-                    {[
-                      { id: 'overview', title: '📊 Overview' },
-                      { id: 'oht', title: '🚰 OHTs' },
-                      { id: 'sumps', title: '🕳️ Sumps' },
-                      { id: 'motors', title: '⚙️ Motors' },
-                      { id: 'manpower', title: '👥 Manpower' },
-                      { id: 'borewells', title: '💧 Borewells' },
-                      { id: 'wells', title: '🌊 Open Wells' }
-                    ].map(tab => (
-                      <div key={tab.id} style={{ padding: '10px 12px', margin: '4px 0', cursor: 'pointer', fontSize: '0.85rem', color: '#e2e8f0', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
-                           onClick={() => { window.dispatchEvent(new CustomEvent('change-plumbing-tab', { detail: tab.id })); closeSidebarOnMobile(); }} 
-                           onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.background = 'transparent'; }}>
-                        <span style={{ color: '#b8972e', flexShrink: 0 }}>•</span>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.title}</span>
-                      </div>
-                    ))}
-                  </>
-                ) : (
-                  unitToc.map((item) => (
-                    <div key={item.id} style={{ padding: '10px 12px', margin: '4px 0', cursor: 'pointer', fontSize: '0.85rem', color: '#e2e8f0', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} onClick={() => { document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); closeSidebarOnMobile(); }} onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = '#e2e8f0'; e.currentTarget.style.background = 'transparent'; }}>
-                      <span style={{ color: '#b8972e', flexShrink: 0 }}>•</span>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</span>
-                    </div>
-                  ))
-                )}
+
+                      {isChillerPlantActive ? (
+                        <div style={{ paddingLeft: '24px' }}>
+                          {[
+                            { id: 'overview', title: 'Overview' },
+                            { id: 'specs', title: '📋 Technical Specifications' },
+                            { id: 'log', title: 'Operating Log' },
+                            { id: 'billing', title: 'Billing Params' },
+                            { id: 'ahu', title: '🏢 AHU Units' },
+                            { id: 'split', title: '🌬️ A/C & Cold Room Units' }
+                          ].map(tab => (
+                            <div key={tab.id} style={{ padding: '8px 12px', margin: '2px 0', cursor: 'pointer', fontSize: '0.85rem', color: '#000000', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
+                                 onClick={() => { window.dispatchEvent(new CustomEvent('change-chiller-tab', { detail: tab.id })); closeSidebarOnMobile(); }} 
+                                 onMouseEnter={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = '#f1f5f9'; }} onMouseLeave={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = 'transparent'; }}>
+                              <span style={{ color: '#b8972e', flexShrink: 0 }}>•</span>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.title}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : isPlumbingActive ? (
+                        <div style={{ paddingLeft: '24px' }}>
+                          {[
+                            { id: 'overview', title: '📊 Overview' },
+                            { id: 'oht', title: '🚰 OHTs' },
+                            { id: 'sumps', title: '🕳️ Sumps' },
+                            { id: 'motors', title: '⚙️ Motors' },
+                            { id: 'manpower', title: '👥 Manpower' },
+                            { id: 'borewells', title: '💧 Borewells' },
+                            { id: 'wells', title: '🌊 Open Wells' }
+                          ].map(tab => (
+                            <div key={tab.id} style={{ padding: '8px 12px', margin: '2px 0', cursor: 'pointer', fontSize: '0.85rem', color: '#000000', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} 
+                                 onClick={() => { window.dispatchEvent(new CustomEvent('change-plumbing-tab', { detail: tab.id })); closeSidebarOnMobile(); }} 
+                                 onMouseEnter={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = '#f1f5f9'; }} onMouseLeave={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = 'transparent'; }}>
+                              <span style={{ color: '#b8972e', flexShrink: 0 }}>•</span>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.title}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : isUnitActive ? (
+                        <div style={{ paddingLeft: '24px' }}>
+                          {unitToc.map((item) => (
+                            <div key={item.id} style={{ padding: '8px 12px', margin: '2px 0', cursor: 'pointer', fontSize: '0.85rem', color: '#000000', borderRadius: 8, transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} onClick={() => { document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); closeSidebarOnMobile(); }} onMouseEnter={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = '#f1f5f9'; }} onMouseLeave={e => { e.currentTarget.style.color = '#000000'; e.currentTarget.style.background = 'transparent'; }}>
+                              <span style={{ color: '#b8972e', flexShrink: 0 }}>•</span>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </React.Fragment>
+                  );
+                })}
               </>
             )}
           </div>
-          <div style={{ padding: '20px', borderTop: '1px solid rgba(255,255,255,0.1)', width: 260 }}>
-            <button onClick={() => { onLogout(); closeSidebarOnMobile(); }} style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 'bold', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-              Logout
+          <div style={{ padding: '20px', borderTop: '1px solid #e2e8f0', width: 260 }}>
+            <button onClick={() => { onLogout(); closeSidebarOnMobile(); }} style={{ width: '100%', padding: '12px', background: '#fff', border: '1px solid #cbd5e1', color: '#ef4444', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 'bold', transition: 'all 0.2s', lineHeight: 1 }} onMouseEnter={e => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.borderColor = '#fca5a5'; e.currentTarget.style.color = '#dc2626'; }} onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#ef4444'; }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+              <span style={{ position: 'relative', top: '1px' }}>Logout</span>
             </button>
           </div>
         </aside>
@@ -1653,6 +1649,7 @@ function AppRoutes({ currentUser, onLogin, onLogout }) {
               element={currentUser ? <PostLoginRedirect currentUser={currentUser} /> : <LoginPage onLogin={onLogin} />}
             />
             <Route path="/" element={<DashboardRoute currentUser={currentUser} />} />
+            <Route path="/devadmin" element={currentUser?.role === 'dev_admin' ? <DevAdminPage /> : <Navigate to="/" replace />} />
             <Route
               path="/unit/:unit"
               element={currentUser ? <UnitDetailWrapper currentUser={currentUser} /> : <Navigate to="/login" replace />}
@@ -1668,6 +1665,22 @@ function AppRoutes({ currentUser, onLogin, onLogout }) {
 
 function App() {
   const [currentUser, setCurrentUser] = useState(() => readStoredSession());
+
+  useEffect(() => {
+    if (currentUser?.id) {
+      fetch('/api/users')
+        .then(res => res.json())
+        .then(data => {
+          const me = data.find(u => u.id === currentUser.id);
+          if (me && (me.accessibleUnits !== currentUser.accessibleUnits || me.dashboardAccess !== currentUser.dashboardAccess || me.role !== currentUser.role)) {
+            const next = { ...currentUser, ...me, loginAt: currentUser.loginAt };
+            setCurrentUser(next);
+            localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(next));
+          }
+        })
+        .catch(err => console.error('Silent session sync failed', err));
+    }
+  }, []);
 
   const handleLogin = (session) => {
     const next = {

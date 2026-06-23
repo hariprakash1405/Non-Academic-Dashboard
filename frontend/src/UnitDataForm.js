@@ -130,7 +130,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
 
   useEffect(() => {
     if (unitName === 'Power House') {
-      fetch(`http://localhost:8085/api/powerhouse?date=${phDate}`)
+      fetch(`/api/powerhouse?date=${phDate}`)
         .then(res => res.json())
         .then(data => {
           if (data) {
@@ -187,7 +187,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   }, [unitName, phDate]);
 
   useEffect(() => {
-    fetch('http://localhost:8085/api/chiller/ahu-units')
+    fetch('/api/chiller/ahu-units')
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -196,7 +196,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       })
       .catch(console.error);
 
-    fetch('http://localhost:8085/api/chiller/split-ac')
+    fetch('/api/chiller/split-ac')
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -205,7 +205,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       })
       .catch(console.error);
 
-    fetch('http://localhost:8085/api/chiller/vrv-units')
+    fetch('/api/chiller/vrv-units')
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -214,7 +214,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       })
       .catch(console.error);
 
-    fetch('http://localhost:8085/api/chiller/cold-room')
+    fetch('/api/chiller/cold-room')
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -223,11 +223,11 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       })
       .catch(console.error);
 
-    fetch('http://localhost:8085/api/chiller/staff').then(res => res.json()).then(data => { if (data) setExistingStaff(data); }).catch(console.error);
-    fetch('http://localhost:8085/api/chiller/equipment').then(res => res.json()).then(data => { if (data) setExistingEquipments(data); }).catch(console.error);
-    fetch('http://localhost:8085/api/chiller/plant-specs').then(res => res.json()).then(data => { if (data) setExistingPlantSpecs(data); }).catch(console.error);
-    fetch('http://localhost:8085/api/chiller/unit-specs').then(res => res.json()).then(data => { if (data) setExistingUnitSpecs(data); }).catch(console.error);
-    fetch('http://localhost:8085/api/chiller/breakdowns')
+    fetch('/api/chiller/staff').then(res => res.json()).then(data => { if (data) setExistingStaff(data); }).catch(console.error);
+    fetch('/api/chiller/equipment').then(res => res.json()).then(data => { if (data) setExistingEquipments(data); }).catch(console.error);
+    fetch('/api/chiller/plant-specs').then(res => res.json()).then(data => { if (data) setExistingPlantSpecs(data); }).catch(console.error);
+    fetch('/api/chiller/unit-specs').then(res => res.json()).then(data => { if (data) setExistingUnitSpecs(data); }).catch(console.error);
+    fetch('/api/chiller/breakdowns')
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -236,12 +236,12 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       })
       .catch(console.error);
 
-    fetch('http://localhost:8085/api/chiller/operating-logs')
+    fetch('/api/chiller/operating-logs')
       .then(res => res.json())
       .then(data => { if (data) setExistingOperatingLogs(data); })
       .catch(console.error);
 
-    fetch('http://localhost:8085/api/mess/data')
+    fetch('/api/mess/data')
       .then(res => res.json())
       .then(data => { if (data && data.wasteLogs) setExistingMessLogs(data.wasteLogs); })
       .catch(console.error);
@@ -258,7 +258,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const fv = (v) => parseFloat(v) || 0;
 
   useEffect(() => {
-    if (chillerTab === 'dynamic' && existingOperatingLogs.length > 0) {
+    if (chillerTab === 'dynamic') {
       const log = existingOperatingLogs.find(l => l.date === chillerDate);
       if (log) {
         setU1({ s1: log.unit1Slot1 || '', s2: log.unit1Slot2 || '', s3: log.unit1Slot3 || '', s4: log.unit1Slot4 || '' });
@@ -290,7 +290,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     if (unitName === 'Mess' && messTab === 'daily') {
       const selectedDate = values.date;
       const selectedBlock = values.blockName || 'Boys Hostel';
-      if (selectedDate && existingMessLogs.length > 0) {
+      if (selectedDate) {
         const log = existingMessLogs.find(l => l.date && l.date.split('T')[0] === selectedDate && l.blockName === selectedBlock);
         if (log) {
           setValues(prev => ({
@@ -343,7 +343,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       pump4Slot1: 0, pump4Slot2: 0, pump4Slot3: 0, pump4Slot4: 0,
     };
     try {
-      const res = await fetch('http://localhost:8085/api/chiller/add-operating-log', {
+      const res = await fetch('/api/chiller/add-operating-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -352,7 +352,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         setChillerSavedMsg('✓ Data saved successfully to the database!');
         setAhuUnits([{ block: '', floor: '', loc: '', type: '', cap: '', qty: '', totCap: '', hp: '', totHp: '', area: '' }]);
         window.dispatchEvent(new Event('unit-form-updated'));
-        fetch('http://localhost:8085/api/chiller/operating-logs').then(r => r.json()).then(d => { if (d) setExistingOperatingLogs(d); }).catch(console.error);
+        fetch('/api/chiller/operating-logs').then(r => r.json()).then(d => { if (d) setExistingOperatingLogs(d); }).catch(console.error);
         setTimeout(() => { setChillerSavedMsg(''); if (onClose) onClose(); }, 1500);
       } else {
         setChillerSavedMsg('✗ Failed to save – check backend connection.');
@@ -371,7 +371,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         cap: fv(unit.cap), qty: parseInt(unit.qty) || 1, totCap: fv(unit.totCap),
         hp: fv(unit.hp), totHp: fv(unit.totHp), area: fv(unit.area)
       };
-      await fetch('http://localhost:8085/api/chiller/update-ahu-unit', {
+      await fetch('/api/chiller/update-ahu-unit', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
       alert('Unit updated successfully!');
@@ -384,7 +384,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const handleDeleteExistingAhuUnit = async (id) => {
     if (!window.confirm('Delete this unit?')) return;
     try {
-      await fetch(`http://localhost:8085/api/chiller/delete-ahu-unit?id=${id}`, { method: 'DELETE' });
+      await fetch(`/api/chiller/delete-ahu-unit?id=${id}`, { method: 'DELETE' });
       setExistingAhuUnits(existingAhuUnits.filter(u => u.id !== id));
       alert('Unit deleted successfully!');
       window.dispatchEvent(new Event('unit-form-updated'));
@@ -413,7 +413,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         area: fv(u.area)
       }));
 
-      const res = await fetch('http://localhost:8085/api/chiller/add-ahu-units', {
+      const res = await fetch('/api/chiller/add-ahu-units', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -446,7 +446,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         totTon: fv(u.totTon)
       }));
 
-      const res = await fetch('http://localhost:8085/api/chiller/add-split-ac', {
+      const res = await fetch('/api/chiller/add-split-ac', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -471,7 +471,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         ...unit,
         ton: fv(unit.ton), qty: parseInt(unit.qty) || 1, totTon: fv(unit.totTon)
       };
-      await fetch('http://localhost:8085/api/chiller/update-split-ac', {
+      await fetch('/api/chiller/update-split-ac', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
       alert('Unit updated successfully!');
@@ -484,7 +484,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const handleDeleteExistingSplitAcUnit = async (id) => {
     if (!window.confirm('Delete this unit?')) return;
     try {
-      await fetch(`http://localhost:8085/api/chiller/delete-split-ac?id=${id}`, { method: 'DELETE' });
+      await fetch(`/api/chiller/delete-split-ac?id=${id}`, { method: 'DELETE' });
       setExistingSplitAcUnits(existingSplitAcUnits.filter(u => u.id !== id));
       alert('Unit deleted successfully!');
       window.dispatchEvent(new Event('unit-form-updated'));
@@ -505,7 +505,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         ...u, ton: fv(u.ton), qty: parseInt(u.qty) || 1, totTon: fv(u.totTon)
       }));
 
-      const res = await fetch('http://localhost:8085/api/chiller/add-vrv-units', {
+      const res = await fetch('/api/chiller/add-vrv-units', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
 
@@ -525,7 +525,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const handleUpdateExistingVrvUnit = async (unit) => {
     try {
       const payload = { ...unit, ton: fv(unit.ton), qty: parseInt(unit.qty) || 1, totTon: fv(unit.totTon) };
-      await fetch('http://localhost:8085/api/chiller/update-vrv-unit', {
+      await fetch('/api/chiller/update-vrv-unit', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
       alert('Unit updated successfully!');
@@ -536,7 +536,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const handleDeleteExistingVrvUnit = async (id) => {
     if (!window.confirm('Delete this unit?')) return;
     try {
-      await fetch(`http://localhost:8085/api/chiller/delete-vrv-unit?id=${id}`, { method: 'DELETE' });
+      await fetch(`/api/chiller/delete-vrv-unit?id=${id}`, { method: 'DELETE' });
       setExistingVrvUnits(existingVrvUnits.filter(u => u.id !== id));
       alert('Unit deleted successfully!');
       window.dispatchEvent(new Event('unit-form-updated'));
@@ -545,7 +545,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
 
   const handleUpdateBreakdown = async (unit) => {
     try {
-      await fetch('http://localhost:8085/api/chiller/update-breakdown', {
+      await fetch('/api/chiller/update-breakdown', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(unit)
       });
       alert('Breakdown updated successfully!');
@@ -558,7 +558,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const handleDeleteBreakdown = async (id) => {
     if (!window.confirm('Delete this breakdown?')) return;
     try {
-      await fetch(`http://localhost:8085/api/chiller/delete-breakdown?id=${id}`, { method: 'DELETE' });
+      await fetch(`/api/chiller/delete-breakdown?id=${id}`, { method: 'DELETE' });
       setExistingBreakdowns(existingBreakdowns.filter(u => u.id !== id));
       alert('Breakdown deleted successfully!');
       window.dispatchEvent(new Event('unit-form-updated'));
@@ -573,13 +573,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     try {
       const valid = staff.filter(u => u.name || u.role);
       if (valid.length > 0) {
-        await fetch('http://localhost:8085/api/chiller/add-staff', {
+        await fetch('/api/chiller/add-staff', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid),
         });
       }
       setChillerSavedMsg('✓ Saved Staff Data');
       setStaff([{ name: '', role: '', shift: '', attendance: '', contact: '', dateJoined: '' }]);
-      fetch('http://localhost:8085/api/chiller/staff').then(r => r.json()).then(d => setExistingStaff(d || []));
+      fetch('/api/chiller/staff').then(r => r.json()).then(d => setExistingStaff(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) {
       console.error(e);
@@ -590,15 +590,15 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   };
   const handleDeleteStaff = async (id) => {
     try {
-      await fetch(`http://localhost:8085/api/chiller/delete-staff?id=${id}`, { method: 'DELETE' });
-      fetch('http://localhost:8085/api/chiller/staff').then(r => r.json()).then(d => setExistingStaff(d || []));
+      await fetch(`/api/chiller/delete-staff?id=${id}`, { method: 'DELETE' });
+      fetch('/api/chiller/staff').then(r => r.json()).then(d => setExistingStaff(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) { console.error(e); }
   };
 
   const handleUpdateStaff = async (staffMember) => {
     try {
-      await fetch('http://localhost:8085/api/chiller/update-staff', {
+      await fetch('/api/chiller/update-staff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(staffMember)
@@ -616,13 +616,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     try {
       const valid = equipments.filter(u => u.name || u.model);
       if (valid.length > 0) {
-        await fetch('http://localhost:8085/api/chiller/add-equipment', {
+        await fetch('/api/chiller/add-equipment', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid),
         });
       }
       setChillerSavedMsg('✓ Saved Equipments Data');
       setEquipments([{ name: '', model: '', capacity: '', type: '', status: '', load: '', tempIn: '', tempOut: '', refrigerant: '', lastService: '', nextService: '', health: 100 }]);
-      fetch('http://localhost:8085/api/chiller/equipment').then(r => r.json()).then(d => setExistingEquipments(d || []));
+      fetch('/api/chiller/equipment').then(r => r.json()).then(d => setExistingEquipments(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) {
       console.error(e);
@@ -633,15 +633,15 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   };
   const handleDeleteEquipment = async (id) => {
     try {
-      await fetch(`http://localhost:8085/api/chiller/delete-equipment?id=${id}`, { method: 'DELETE' });
-      fetch('http://localhost:8085/api/chiller/equipment').then(r => r.json()).then(d => setExistingEquipments(d || []));
+      await fetch(`/api/chiller/delete-equipment?id=${id}`, { method: 'DELETE' });
+      fetch('/api/chiller/equipment').then(r => r.json()).then(d => setExistingEquipments(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) { console.error(e); }
   };
 
   const handleUpdateEquipment = async (equipment) => {
     try {
-      await fetch('http://localhost:8085/api/chiller/update-equipment', {
+      await fetch('/api/chiller/update-equipment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(equipment)
@@ -659,13 +659,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     try {
       const valid = plantSpecs.filter(u => u.parameter || u.value);
       if (valid.length > 0) {
-        await fetch('http://localhost:8085/api/chiller/add-plant-specs', {
+        await fetch('/api/chiller/add-plant-specs', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid),
         });
       }
       setChillerSavedMsg('✓ Saved Plant Specs');
       setPlantSpecs([{ parameter: '', value: '', unit: '', remarks: '' }]);
-      fetch('http://localhost:8085/api/chiller/plant-specs').then(r => r.json()).then(d => setExistingPlantSpecs(d || []));
+      fetch('/api/chiller/plant-specs').then(r => r.json()).then(d => setExistingPlantSpecs(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) {
       console.error(e);
@@ -676,14 +676,14 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   };
   const handleDeletePlantSpec = async (id) => {
     try {
-      await fetch(`http://localhost:8085/api/chiller/delete-plant-spec?id=${id}`, { method: 'DELETE' });
-      fetch('http://localhost:8085/api/chiller/plant-specs').then(r => r.json()).then(d => setExistingPlantSpecs(d || []));
+      await fetch(`/api/chiller/delete-plant-spec?id=${id}`, { method: 'DELETE' });
+      fetch('/api/chiller/plant-specs').then(r => r.json()).then(d => setExistingPlantSpecs(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) { console.error(e); }
   };
   const handleUpdatePlantSpec = async (u) => {
     try {
-      await fetch('http://localhost:8085/api/chiller/update-plant-spec', {
+      await fetch('/api/chiller/update-plant-spec', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(u)
       });
       window.dispatchEvent(new Event('unit-form-updated'));
@@ -696,13 +696,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     try {
       const valid = unitSpecs.filter(u => u.param || u.unit1);
       if (valid.length > 0) {
-        await fetch('http://localhost:8085/api/chiller/add-unit-specs', {
+        await fetch('/api/chiller/add-unit-specs', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid),
         });
       }
       setChillerSavedMsg('✓ Saved Unit Specs');
       setUnitSpecs([{ param: '', unit1: '', unit2: '', unit3: '' }]);
-      fetch('http://localhost:8085/api/chiller/unit-specs').then(r => r.json()).then(d => setExistingUnitSpecs(d || []));
+      fetch('/api/chiller/unit-specs').then(r => r.json()).then(d => setExistingUnitSpecs(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) {
       console.error(e);
@@ -713,14 +713,14 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   };
   const handleDeleteUnitSpec = async (id) => {
     try {
-      await fetch(`http://localhost:8085/api/chiller/delete-unit-spec?id=${id}`, { method: 'DELETE' });
-      fetch('http://localhost:8085/api/chiller/unit-specs').then(r => r.json()).then(d => setExistingUnitSpecs(d || []));
+      await fetch(`/api/chiller/delete-unit-spec?id=${id}`, { method: 'DELETE' });
+      fetch('/api/chiller/unit-specs').then(r => r.json()).then(d => setExistingUnitSpecs(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) { console.error(e); }
   };
   const handleUpdateUnitSpec = async (u) => {
     try {
-      await fetch('http://localhost:8085/api/chiller/update-unit-spec', {
+      await fetch('/api/chiller/update-unit-spec', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(u)
       });
       window.dispatchEvent(new Event('unit-form-updated'));
@@ -735,7 +735,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       return;
     }
     try {
-      const res = await fetch('http://localhost:8085/api/chiller/add-breakdowns', {
+      const res = await fetch('/api/chiller/add-breakdowns', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid)
       });
       if (res.ok) {
@@ -763,7 +763,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         ...u, ton: fv(u.ton), qty: parseInt(u.qty) || 1, totTon: fv(u.totTon)
       }));
 
-      const res = await fetch('http://localhost:8085/api/chiller/add-cold-room', {
+      const res = await fetch('/api/chiller/add-cold-room', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
 
@@ -783,7 +783,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const handleUpdateExistingColdRoomUnit = async (unit) => {
     try {
       const payload = { ...unit, ton: fv(unit.ton), qty: parseInt(unit.qty) || 1, totTon: fv(unit.totTon) };
-      await fetch('http://localhost:8085/api/chiller/update-cold-room', {
+      await fetch('/api/chiller/update-cold-room', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
       alert('Unit updated successfully!');
@@ -794,7 +794,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const handleDeleteExistingColdRoomUnit = async (id) => {
     if (!window.confirm('Delete this unit?')) return;
     try {
-      await fetch(`http://localhost:8085/api/chiller/delete-cold-room?id=${id}`, { method: 'DELETE' });
+      await fetch(`/api/chiller/delete-cold-room?id=${id}`, { method: 'DELETE' });
       setExistingColdRoomUnits(existingColdRoomUnits.filter(u => u.id !== id));
       alert('Unit deleted successfully!');
       window.dispatchEvent(new Event('unit-form-updated'));
@@ -805,7 +805,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     const fetchHostelData = async () => {
       if (unitName === 'Hostels') {
         try {
-          const res = await fetch('http://localhost:8085/api/hostels');
+          const res = await fetch('/api/hostels');
           if (res.ok) {
             const data = await res.json();
             if (data.blocks) {
@@ -825,7 +825,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     const fetchMessData = async () => {
       if (unitName === 'Mess') {
         try {
-          const res = await fetch('http://localhost:8085/api/mess/data');
+          const res = await fetch('/api/mess/data');
           if (res.ok) {
             const data = await res.json();
             if (data.equipment) setExistingMessEquipments(data.equipment);
@@ -975,6 +975,15 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       const rollNos = cleanedResidents.map(r => r.rollNo.trim().toUpperCase());
       if (rollNos.length !== new Set(rollNos).size) { alert('Each Resident Student must have a unique Roll Number.'); return; }
 
+      for (let i = 0; i < cleanedAbsents.length; i++) {
+        const a = cleanedAbsents[i];
+        if (!a.name?.trim() || !a.rollNo?.trim() || !a.roomNo?.trim()) { alert(`Absent Student on row ${i + 1} must have a valid Name, Roll No, and Room No.`); return; }
+        if (!rollNos.includes(a.rollNo.trim().toUpperCase())) {
+          alert(`Absent Student on row ${i + 1} (${a.rollNo}) is not found in the Resident List. Please add them as a resident first.`);
+          return;
+        }
+      }
+
       for (let i = 0; i < cleanedComplaints.length; i++) {
         const c = cleanedComplaints[i];
         if (!c.type || !c.desc?.trim()) { alert(`Complaint on row ${i + 1} must have a valid Sector and Issue Description.`); return; }
@@ -997,7 +1006,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       try {
         console.log('[SAVE] occupied:', cleanedBlockData.occupied, 'beds:', cleanedBlockData.beds);
 
-        const res = await fetch('http://localhost:8085/api/hostels/update-block', {
+        const res = await fetch('/api/hostels/update-block', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(cleanedBlockData)
@@ -1019,7 +1028,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         const waterVal = parseFloat(values.water);
         const powerVal = parseFloat(values.electricity);
         if (!isNaN(waterVal) || !isNaN(powerVal)) {
-          await fetch('http://localhost:8085/api/hostels/update', {
+          await fetch('/api/hostels/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ block: selectedHostelBlock, values: values })
@@ -1084,7 +1093,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         return;
       }
 
-      const response = await fetch('http://localhost:8085/api/mess/log-waste', {
+      const response = await fetch('/api/mess/log-waste', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -1115,7 +1124,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       formData.append('monthYear', messMenuMonth);
       formData.append('menuPdf', messMenuFile);
 
-      const res = await fetch('http://localhost:8085/api/mess/menu-pdf', {
+      const res = await fetch('/api/mess/menu-pdf', {
         method: 'POST', body: formData
       });
       if (res.ok) {
@@ -1137,13 +1146,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       const valid = messStaffs.filter(s => s.name || s.role);
       if (valid.length === 0) { alert('Please enter at least one valid staff to save.'); return; }
       
-      const res = await fetch('http://localhost:8085/api/mess/staff', {
+      const res = await fetch('/api/mess/staff', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid)
       });
       if (res.ok) { 
         alert('Staff saved!'); 
         setMessStaffs([{ blockName: 'Boys Hostel', name: '', role: '', shift: 'Morning', contact: '' }]);
-        fetch('http://localhost:8085/api/mess/data').then(r => r.json()).then(d => setExistingMessStaffs(d.staff || []));
+        fetch('/api/mess/data').then(r => r.json()).then(d => setExistingMessStaffs(d.staff || []));
         window.dispatchEvent(new Event('unit-form-updated'));
       }
       else alert('Failed to save staff: ' + await res.text());
@@ -1152,7 +1161,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
 
   const handleUpdateMessStaff = async (staff) => {
     try {
-      await fetch('http://localhost:8085/api/mess/update-staff', {
+      await fetch('/api/mess/update-staff', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(staff)
       });
       alert('Staff updated successfully!');
@@ -1162,8 +1171,8 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
 
   const handleDeleteMessStaff = async (id) => {
     try {
-      await fetch(`http://localhost:8085/api/mess/delete-staff?id=${id}`, { method: 'DELETE' });
-      fetch('http://localhost:8085/api/mess/data').then(r => r.json()).then(d => setExistingMessStaffs(d.staff || []));
+      await fetch(`/api/mess/delete-staff?id=${id}`, { method: 'DELETE' });
+      fetch('/api/mess/data').then(r => r.json()).then(d => setExistingMessStaffs(d.staff || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch(e) { console.error(e); }
   };
@@ -1177,13 +1186,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         ...e, total: parseInt(e.total)||0, working: parseInt(e.working)||0, damaged: parseInt(e.damaged)||0
       }));
 
-      const res = await fetch('http://localhost:8085/api/mess/equipment', {
+      const res = await fetch('/api/mess/equipment', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
       if (res.ok) { 
         alert('Equipment saved!'); 
         setMessEquipments([{ blockName: 'Boys Hostel', name: '', total: 0, working: 0, damaged: 0, status: 'Working' }]);
-        fetch('http://localhost:8085/api/mess/data').then(r => r.json()).then(d => setExistingMessEquipments(d.equipment || []));
+        fetch('/api/mess/data').then(r => r.json()).then(d => setExistingMessEquipments(d.equipment || []));
         window.dispatchEvent(new Event('unit-form-updated'));
       }
       else alert('Failed to save equipment: ' + await res.text());
@@ -1195,7 +1204,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       const payload = {
         ...equipment, total: parseInt(equipment.total)||0, working: parseInt(equipment.working)||0, damaged: parseInt(equipment.damaged)||0
       };
-      await fetch('http://localhost:8085/api/mess/update-equipment', {
+      await fetch('/api/mess/update-equipment', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
       alert('Equipment updated successfully!');
@@ -1205,8 +1214,8 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
 
   const handleDeleteMessEquipment = async (id) => {
     try {
-      await fetch(`http://localhost:8085/api/mess/delete-equipment?id=${id}`, { method: 'DELETE' });
-      fetch('http://localhost:8085/api/mess/data').then(r => r.json()).then(d => setExistingMessEquipments(d.equipment || []));
+      await fetch(`/api/mess/delete-equipment?id=${id}`, { method: 'DELETE' });
+      fetch('/api/mess/data').then(r => r.json()).then(d => setExistingMessEquipments(d.equipment || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch(e) { console.error(e); }
   };
@@ -1411,9 +1420,14 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   };
 
   const addAbsentStudent = () => {
+    const dateObj = new Date(values.date || new Date());
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const formattedDate = `${day} ${months[dateObj.getMonth()]}`;
+
     setCurrentBlockData(prev => ({
       ...prev,
-      absentList: [...(prev.absentList || []), { name: '', rollNo: '', roomNo: '' }]
+      absentList: [...(prev.absentList || []), { name: '', rollNo: '', roomNo: '', date: formattedDate }]
     }));
   };
 
@@ -1464,8 +1478,19 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         const targetDateInput = window.prompt("Extract absent students for which date? (Must match format in Excel)", defaultDateStr);
         if (!targetDateInput) return;
 
+        let formattedDate = "";
+        try {
+          const parts = targetDateInput.trim().split('.');
+          if (parts.length === 3) {
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            formattedDate = `${parts[0].padStart(2, '0')} ${months[parseInt(parts[1], 10) - 1]}`;
+          }
+        } catch(e) {}
+
         const newAbsents = [];
         const currentHostelName = (currentBlockData.name || '').toLowerCase().trim();
+        const currentResidents = currentBlockData.residentList || [];
+        let invalidCount = 0;
 
         for (let i = startIndex; i < data.length; i++) {
           const row = data[i];
@@ -1480,11 +1505,19 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                                    rowHostelStr.includes(currentHostelName);
 
           if (isMatchingDate && isMatchingHostel) {
-             newAbsents.push({
-                name: String(row[nameIdx] || '').trim(),
-                rollNo: String(row[rollIdx] || '').trim(),
-                roomNo: roomIdx !== -1 ? String(row[roomIdx] || '').trim() : ''
-             });
+             const rollStr = String(row[rollIdx] || '').trim().toUpperCase();
+             const isValidResident = currentResidents.some(r => String(r.rollNo || '').trim().toUpperCase() === rollStr);
+             
+             if (isValidResident) {
+                newAbsents.push({
+                   name: String(row[nameIdx] || '').trim(),
+                   rollNo: String(row[rollIdx] || '').trim(),
+                   roomNo: roomIdx !== -1 ? String(row[roomIdx] || '').trim() : '',
+                   date: formattedDate
+                });
+             } else {
+                invalidCount++;
+             }
           }
         }
         
@@ -1493,9 +1526,17 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             ...prev,
             absentList: [...(prev.absentList || []), ...newAbsents]
           }));
-          alert(`Successfully extracted ${newAbsents.length} absent students for ${currentBlockData.name} on ${targetDateInput}!`);
+          let msg = `Successfully extracted ${newAbsents.length} absent students for ${currentBlockData.name} on ${targetDateInput}!`;
+          if (invalidCount > 0) {
+            msg += `\nSkipped ${invalidCount} student(s) because their Roll Number was not found in the Resident List.`;
+          }
+          alert(msg);
         } else {
-          alert(`No matching students found for Block: ${currentBlockData.name} and Date: ${targetDateInput}.`);
+          if (invalidCount > 0) {
+            alert(`No valid students added. Skipped ${invalidCount} student(s) because their Roll Number was not found in the Resident List.`);
+          } else {
+            alert(`No matching students found for Block: ${currentBlockData.name} and Date: ${targetDateInput}.`);
+          }
         }
       } catch (err) {
         console.error(err);
@@ -1517,23 +1558,85 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         const workbook = XLSX.read(bstr, { type: 'binary' });
         const wsname = workbook.SheetNames[0];
         const ws = workbook.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
         
-        const newResidents = [];
-        let startIndex = 0;
-        if (data.length > 0 && typeof data[0][0] === 'string' && data[0][0].toLowerCase().includes('name')) {
-          startIndex = 1;
-        }
-        for (let i = startIndex; i < data.length; i++) {
-          const row = data[i];
-          if (row && (row[0] || row[1] || row[2])) {
-            newResidents.push({
-              name: String(row[0] || '').trim(),
-              rollNo: String(row[1] || '').trim(),
-              roomNo: String(row[2] || '').trim()
-            });
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        let headerRowIndex = -1;
+        for (let i = 0; i < Math.min(rows.length, 10); i++) {
+          const rowStr = (rows[i] || []).join(' ').toLowerCase();
+          if (rowStr.includes('name') && rowStr.includes('roll')) {
+            headerRowIndex = i;
+            break;
           }
         }
+        
+        let dataToProcess = [];
+        if (headerRowIndex !== -1) {
+          dataToProcess = XLSX.utils.sheet_to_json(ws, { range: headerRowIndex });
+        } else {
+          dataToProcess = XLSX.utils.sheet_to_json(ws);
+        }
+
+        const newResidents = [];
+        const targetBlock = (currentBlockData?.name || selectedHostelBlock || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        // Determine if there is a block column
+        let hasBlockColumn = false;
+        if (dataToProcess.length > 0) {
+           const firstRowKeys = Object.keys(dataToProcess[0]).map(k => String(k).toLowerCase().replace(/[^a-z0-9]/g, ''));
+           hasBlockColumn = firstRowKeys.some(k => k.includes('block') || k.includes('hostel') || k.includes('building'));
+        }
+
+        if (!hasBlockColumn) {
+          alert("Warning: Could not find a 'Block' or 'Hostel' column in your Excel sheet. Adding all students.");
+        }
+
+        const existingRolls = new Set((currentBlockData?.residentList || [])
+          .map(r => String(r.rollNo || '').trim().toLowerCase())
+          .filter(r => r));
+
+        dataToProcess.forEach(row => {
+          const normalizedRow = {};
+          Object.keys(row).forEach(k => {
+            if (k) normalizedRow[String(k).toLowerCase().replace(/[^a-z0-9]/g, '')] = row[k];
+          });
+
+          if (hasBlockColumn) {
+            const blockKey = Object.keys(normalizedRow).find(k => k.includes('block') || k.includes('hostel') || k.includes('building'));
+            const blockVal = String(normalizedRow[blockKey] || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            
+            if (blockVal !== '') {
+               const tClean = targetBlock.replace('block', '');
+               const bClean = blockVal.replace('block', '');
+               
+               if (tClean !== bClean && !tClean.includes(bClean) && !bClean.includes(tClean)) {
+                 return; // Skip this student, wrong block
+               }
+            } else {
+               return; // Skip if block value is empty
+            }
+          }
+
+          const name = String(normalizedRow.studentname || normalizedRow.name || '').trim();
+          const rollNo = String(normalizedRow.rollno || normalizedRow.rollnumber || '').trim();
+          const roomNo = String(normalizedRow.roomno || normalizedRow.room || '').trim();
+          const year = String(normalizedRow.year || '').trim();
+
+          if (name || rollNo || roomNo) {
+            const rollKey = rollNo.toLowerCase();
+            if (rollKey) {
+              if (!existingRolls.has(rollKey)) {
+                existingRolls.add(rollKey);
+                newResidents.push({ name, rollNo, roomNo, year });
+              }
+            } else {
+              const fallbackKey = `${name}-${roomNo}`.toLowerCase();
+              if (!existingRolls.has(fallbackKey)) {
+                existingRolls.add(fallbackKey);
+                newResidents.push({ name, rollNo, roomNo, year });
+              }
+            }
+          }
+        });
         
         if (newResidents.length > 0) {
           setCurrentBlockData(prev => ({
@@ -1542,11 +1645,11 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
           }));
           alert(`Successfully imported ${newResidents.length} students!`);
         } else {
-          alert('No valid student data found in the file.');
+          alert('No valid student data found for this block in the file.');
         }
       } catch (err) {
         console.error(err);
-        alert('Failed to parse Excel file. Please ensure it has columns: Name, Roll No, Room No');
+        alert('Failed to parse Excel file. Please ensure it has columns: Name, Roll No, Room No, Year, Block');
       }
     };
     reader.readAsBinaryString(file);
@@ -3760,6 +3863,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                             <th>Name</th>
                             <th>Roll No (Unique PK)</th>
                             <th>Room No</th>
+                            <th>Year</th>
                             <th style={{ width: '100px' }}>Action</th>
                           </tr>
                         </thead>
@@ -3772,6 +3876,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                               <td><input type="text" value={res.name || ''} onChange={(e) => updateResidentField(idx, 'name', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter name" /></td>
                               <td><input type="text" value={res.rollNo || ''} onChange={(e) => updateResidentField(idx, 'rollNo', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter unique roll no" /></td>
                               <td><input type="text" value={res.roomNo || ''} onChange={(e) => updateResidentField(idx, 'roomNo', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter room" /></td>
+                              <td><input type="text" value={res.year || ''} onChange={(e) => updateResidentField(idx, 'year', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter year" /></td>
                               <td>
                                 <button
                                   onClick={() => removeResident(idx)}
@@ -3852,7 +3957,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
           dgDynamic: dgDynamic,
           dgDailyFuel: parseFloat(dgDailyFuel) || 0
         };
-        const res = await fetch('http://localhost:8085/api/powerhouse/data', {
+        const res = await fetch('/api/powerhouse/data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -3883,7 +3988,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', paddingBottom: '12px' }}>
           {['static', 'eb_dynamic', 'solar_dynamic', 'dg_dynamic'].map(tab => (
             <button
               key={tab}

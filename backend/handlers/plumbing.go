@@ -35,6 +35,8 @@ func (h *APIHandler) GetPlumbing(w http.ResponseWriter, r *http.Request) {
 	var manpower []models.PlumbingManpower
 	var runtimes []models.PlumbingRuntimeLog
 	var riverIntakes []models.PlumbingRiverIntakeLog
+	var borewells []models.PlumbingBorewell
+	var wells []models.PlumbingWell
 
 	h.DB.Find(&motors)
 	h.DB.Find(&sumps)
@@ -42,6 +44,8 @@ func (h *APIHandler) GetPlumbing(w http.ResponseWriter, r *http.Request) {
 	h.DB.Find(&manpower)
 	h.DB.Find(&runtimes)
 	h.DB.Find(&riverIntakes)
+	h.DB.Find(&borewells)
+	h.DB.Find(&wells)
 
 	for i := range motors {
 		var hp float64
@@ -77,6 +81,8 @@ func (h *APIHandler) GetPlumbing(w http.ResponseWriter, r *http.Request) {
 		"manpower":     manpower,
 		"runtimes":     runtimes,
 		"riverIntakes": riverIntakes,
+		"borewells":    borewells,
+		"wells":        wells,
 	}
 	jsonData, err := json.Marshal(payload)
 	if err == nil {
@@ -270,91 +276,6 @@ func (h *APIHandler) AddPlumbingRuntime(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *APIHandler) Plumbing() {
-	var count int64
-	h.DB.Model(&models.PlumbingMotor{}).Count(&count)
-	if count == 0 {
-		motors := []models.PlumbingMotor{
-			{MotorID: "MTR-01", Location: "Main Pump House", Type: "Submersible", Power: "10 HP", Status: "Active", NextService: "12-Jun-2026", ConnectedTank: "OHT-01"},
-			{MotorID: "MTR-02", Location: "STP Transfer", Type: "Centrifugal", Power: "5 HP", Status: "Active", NextService: "15-Jul-2026", ConnectedTank: "SMP-01"},
-			{MotorID: "MTR-03", Location: "Hostel Block A Sump", Type: "Submersible", Power: "7.5 HP", Status: "Maintenance", NextService: "01-Jun-2026", ConnectedTank: "SMP-02"},
-			{MotorID: "MTR-04", Location: "Admin Block Booster", Type: "Centrifugal", Power: "2 HP", Status: "Active", NextService: "20-Aug-2026", ConnectedTank: "OHT-01"},
-			{MotorID: "MTR-05", Location: "Sports Complex Sump", Type: "Submersible", Power: "5 HP", Status: "Active", NextService: "05-Sep-2026", ConnectedTank: "SMP-03"},
-		}
-		for _, m := range motors {
-			h.DB.Create(&m)
-		}
-	}
-
-	h.DB.Model(&models.PlumbingSump{}).Count(&count)
-	if count == 0 {
-		sumps := []models.PlumbingSump{
-			{SumpID: "SMP-01", Location: "Main Tank (Sump)", Length: 25.25, Width: 26.00, Depth: 9.75, CubicFt: 6400.88, Capacity: 180000, ZoneType: "Main / Central", Status: "Active"},
-			{SumpID: "SMP-02", Location: "Narmada Hostel Sump", Length: 30.50, Width: 21.00, Depth: 10.00, CubicFt: 6405.00, Capacity: 181369, ZoneType: "Boys Hostel", Status: "Active"},
-			{SumpID: "SMP-03", Location: "Emerald Hostel Back Side Sump", Length: 40.00, Width: 11.00, Depth: 9.50, CubicFt: 4180.00, Capacity: 118364, ZoneType: "Girls Hostel", Status: "Active"},
-			{SumpID: "SMP-04", Location: "Staff Quarters Sump", Length: 21.00, Width: 11.00, Depth: 8.00, CubicFt: 1848.00, Capacity: 52329, ZoneType: "Staff Quarters", Status: "Active"},
-			{SumpID: "SMP-05", Location: "Sapphire Hostel Back Side Sump", Length: 34.00, Width: 18.75, Depth: 12.75, CubicFt: 8128.00, Capacity: 230159, ZoneType: "Girls Hostel", Status: "Active"},
-			{SumpID: "SMP-06", Location: "Fire Safety UG Sump", Length: 33.75, Width: 25.00, Depth: 21.00, CubicFt: 17718.80, Capacity: 502232, ZoneType: "Fire Safety", Status: "Active"},
-			{SumpID: "SMP-07", Location: "RO Plant - Raw Water Sump", Length: 15.00, Width: 9.60, Depth: 6.00, CubicFt: 864.00, Capacity: 26000, ZoneType: "RO Plant", Status: "Active"},
-			{SumpID: "SMP-08", Location: "RO Plant - RO Water Sump", Length: 15.00, Width: 9.60, Depth: 6.00, CubicFt: 864.00, Capacity: 26000, ZoneType: "RO Plant", Status: "Active"},
-			{SumpID: "SMP-09", Location: "Training Academy Sump - Raw", Length: 21.00, Width: 7.00, Depth: 6.00, CubicFt: 2988.00, Capacity: 40000, ZoneType: "Training Academy", Status: "Active"},
-			{SumpID: "SMP-10", Location: "Training Academy Sump - Treated", Length: 21.00, Width: 7.00, Depth: 6.00, CubicFt: 2988.00, Capacity: 40000, ZoneType: "Training Academy", Status: "Active"},
-		}
-		for _, s := range sumps {
-			h.DB.Create(&s)
-		}
-	}
-
-	h.DB.Model(&models.PlumbingOHT{}).Count(&count)
-	if count == 0 {
-		ohts := []models.PlumbingOHT{
-			{OHTID: "OHT-01", Location: "Main Tank OHT", Length: 24.00, Width: 24.00, Depth: 7.00, CubicFt: 4032.00, Capacity: 120000, ZoneType: "Main / Central", Status: "Active"},
-			{OHTID: "OHT-02", Location: "Sapphire Hostel (North-1)", Length: 21.00, Width: 7.00, Depth: 6.00, CubicFt: 2988.00, Capacity: 40000, ZoneType: "Girls Hostel", Status: "Active"},
-			{OHTID: "OHT-03", Location: "Sapphire Hostel (South-1)", Length: 21.00, Width: 7.00, Depth: 6.00, CubicFt: 2988.00, Capacity: 40000, ZoneType: "Girls Hostel", Status: "Active"},
-			{OHTID: "OHT-04", Location: "Sapphire Hostel (North-2)", Length: 16.50, Width: 9.50, Depth: 6.00, CubicFt: 940.00, Capacity: 26000, ZoneType: "Girls Hostel", Status: "Active"},
-			{OHTID: "OHT-05", Location: "Sapphire Hostel (South-2)", Length: 16.50, Width: 9.50, Depth: 6.00, CubicFt: 940.00, Capacity: 26000, ZoneType: "Girls Hostel", Status: "Active"},
-			{OHTID: "OHT-06", Location: "Sapphire Hostel (North-3)", Length: 16.50, Width: 9.50, Depth: 6.00, CubicFt: 940.00, Capacity: 26000, ZoneType: "Girls Hostel", Status: "Active"},
-			{OHTID: "OHT-07", Location: "Sapphire Hostel (South-3)", Length: 16.50, Width: 9.50, Depth: 6.00, CubicFt: 940.00, Capacity: 26000, ZoneType: "Girls Hostel", Status: "Active"},
-			{OHTID: "OHT-08", Location: "Emerald Hostel (North-1)", Length: 21.00, Width: 7.00, Depth: 6.00, CubicFt: 2988.00, Capacity: 40000, ZoneType: "Girls Hostel", Status: "Active"},
-			{OHTID: "OHT-09", Location: "Emerald Hostel (South-1)", Length: 21.00, Width: 7.00, Depth: 6.00, CubicFt: 2988.00, Capacity: 40000, ZoneType: "Girls Hostel", Status: "Active"},
-			{OHTID: "OHT-10", Location: "Emerald Hostel (North-2)", Length: 16.50, Width: 9.50, Depth: 6.00, CubicFt: 940.00, Capacity: 26000, ZoneType: "Girls Hostel", Status: "Active"},
-			{OHTID: "OHT-11", Location: "Emerald Hostel (South-2)", Length: 16.50, Width: 9.50, Depth: 6.00, CubicFt: 940.00, Capacity: 26000, ZoneType: "Girls Hostel", Status: "Active"},
-			{OHTID: "OHT-12", Location: "Emerald Hostel (North-3)", Length: 16.50, Width: 9.50, Depth: 6.00, CubicFt: 940.00, Capacity: 26000, ZoneType: "Girls Hostel", Status: "Active"},
-			{OHTID: "OHT-13", Location: "Emerald Hostel (South-3)", Length: 16.50, Width: 9.50, Depth: 6.00, CubicFt: 940.00, Capacity: 26000, ZoneType: "Girls Hostel", Status: "Active"},
-			{OHTID: "OHT-14", Location: "Diamond Hostel", Length: 16.50, Width: 11.00, Depth: 6.00, CubicFt: 1089.00, Capacity: 30000, ZoneType: "Boys Hostel", Status: "Active"},
-			{OHTID: "OHT-15", Location: "Ruby Hostel OHT - 1", Length: 16.50, Width: 11.00, Depth: 6.00, CubicFt: 1089.00, Capacity: 30000, ZoneType: "Boys Hostel", Status: "Active"},
-			{OHTID: "OHT-16", Location: "Ruby Hostel OHT - 2", Length: 16.50, Width: 11.00, Depth: 6.00, CubicFt: 1089.00, Capacity: 30000, ZoneType: "Boys Hostel", Status: "Active"},
-			{OHTID: "OHT-17", Location: "Ganga Hostel", Length: 23.00, Width: 19.00, Depth: 7.00, CubicFt: 3059.00, Capacity: 85000, ZoneType: "Boys Hostel", Status: "Active"},
-			{OHTID: "OHT-18", Location: "Yamuna Hostel", Length: 23.00, Width: 19.00, Depth: 7.00, CubicFt: 3059.00, Capacity: 85000, ZoneType: "Boys Hostel", Status: "Active"},
-			{OHTID: "OHT-19", Location: "Cauvery Hostel", Length: 16.50, Width: 11.00, Depth: 6.00, CubicFt: 1089.00, Capacity: 30000, ZoneType: "Boys Hostel", Status: "Active"},
-			{OHTID: "OHT-20", Location: "Narmada (West)", Length: 16.50, Width: 11.00, Depth: 6.00, CubicFt: 1089.00, Capacity: 30000, ZoneType: "Boys Hostel", Status: "Active"},
-			{OHTID: "OHT-21", Location: "Narmada (East)", Length: 16.50, Width: 11.00, Depth: 6.00, CubicFt: 1089.00, Capacity: 30000, ZoneType: "Boys Hostel", Status: "Active"},
-			{OHTID: "OHT-22", Location: "Bhavani (South)", Length: 33.00, Width: 7.25, Depth: 6.00, CubicFt: 1435.00, Capacity: 40000, ZoneType: "Boys Hostel", Status: "Active"},
-			{OHTID: "OHT-23", Location: "Bhavani (North)", Length: 33.00, Width: 7.25, Depth: 6.00, CubicFt: 1435.00, Capacity: 40000, ZoneType: "Boys Hostel", Status: "Active"},
-			{OHTID: "OHT-25", Location: "Girl's Dining Hall (East)", Length: 25.00, Width: 21.00, Depth: 6.50, CubicFt: 3412.00, Capacity: 95000, ZoneType: "Dining", Status: "Active"},
-			{OHTID: "OHT-26", Location: "Girl's Dining Hall (West)", Length: 25.00, Width: 21.00, Depth: 6.50, CubicFt: 3412.00, Capacity: 95000, ZoneType: "Dining", Status: "Active"},
-			{OHTID: "OHT-27", Location: "Boy's Dining (Above Kitchen)", Length: 23.00, Width: 16.00, Depth: 8.00, CubicFt: 2944.00, Capacity: 82000, ZoneType: "Dining", Status: "Active"},
-			{OHTID: "OHT-28", Location: "Boy's Dining (In Between Kitchen)", Length: 21.00, Width: 29.00, Depth: 6.25, CubicFt: 3806.00, Capacity: 105000, ZoneType: "Dining", Status: "Active"},
-			{OHTID: "OHT-29", Location: "Mechanical Block OHT", Length: 15.00, Width: 15.00, Depth: 6.50, CubicFt: 1462.50, Capacity: 40000, ZoneType: "Academic Block", Status: "Active"},
-			{OHTID: "OHT-30", Location: "Mechatronics Block OHT - North (1)", Length: 15.00, Width: 15.00, Depth: 6.50, CubicFt: 1462.50, Capacity: 40000, ZoneType: "Academic Block", Status: "Active"},
-			{OHTID: "OHT-31", Location: "Mechatronics Block OHT - North (2)", Length: 15.00, Width: 15.00, Depth: 6.50, CubicFt: 1462.50, Capacity: 40000, ZoneType: "Academic Block", Status: "Active"},
-			{OHTID: "OHT-32", Location: "Mechatronics Block OHT - North (3)", Length: 15.00, Width: 15.00, Depth: 6.50, CubicFt: 1462.50, Capacity: 40000, ZoneType: "Academic Block", Status: "Active"},
-			{OHTID: "OHT-33", Location: "Coral Hostel OHT", Length: 16.50, Width: 9.50, Depth: 6.00, CubicFt: 940.00, Capacity: 26000, ZoneType: "Boys Hostel", Status: "Active"},
-			{OHTID: "OHT-34", Location: "Pearl Hostel OHT (East)", Length: 21.00, Width: 7.00, Depth: 6.00, CubicFt: 2988.00, Capacity: 40000, ZoneType: "Boys Hostel", Status: "Active"},
-			{OHTID: "OHT-35", Location: "Pearl Hostel OHT (West)", Length: 21.00, Width: 7.00, Depth: 6.00, CubicFt: 2988.00, Capacity: 40000, ZoneType: "Boys Hostel", Status: "Active"},
-			{OHTID: "OHT-36", Location: "Training Academy OHT", Length: 16.50, Width: 11.00, Depth: 6.00, CubicFt: 1089.00, Capacity: 30000, ZoneType: "Training Academy", Status: "Active"},
-			{OHTID: "OHT-37", Location: "Learning Centre OHT East", Length: 15.00, Width: 9.60, Depth: 6.00, CubicFt: 864.00, Capacity: 26000, ZoneType: "Academic Block", Status: "Active"},
-			{OHTID: "OHT-38", Location: "Learning Centre OHT West", Length: 15.00, Width: 9.60, Depth: 6.00, CubicFt: 864.00, Capacity: 26000, ZoneType: "Academic Block", Status: "Active"},
-			{OHTID: "OHT-39", Location: "Staff Quarters L Block OHT - East", Length: 15.00, Width: 9.60, Depth: 6.00, CubicFt: 864.00, Capacity: 26000, ZoneType: "Staff Quarters", Status: "Active"},
-			{OHTID: "OHT-40", Location: "Staff Quarters L Block OHT - West", Length: 15.00, Width: 9.60, Depth: 6.00, CubicFt: 864.00, Capacity: 26000, ZoneType: "Staff Quarters", Status: "Active"},
-			{OHTID: "OHT-41", Location: "Staff Quarters M Block OHT - East", Length: 15.00, Width: 9.60, Depth: 6.00, CubicFt: 864.00, Capacity: 26000, ZoneType: "Staff Quarters", Status: "Active"},
-			{OHTID: "OHT-42", Location: "Staff Quarters M Block OHT - West", Length: 15.00, Width: 9.60, Depth: 6.00, CubicFt: 864.00, Capacity: 26000, ZoneType: "Staff Quarters", Status: "Active"},
-			{OHTID: "OHT-43", Location: "Staff Quarters A to E Block (Type 1)", Length: 0.0, Width: 0.0, Depth: 0.0, CubicFt: 0.0, Capacity: 80000, ZoneType: "Staff Quarters", Status: "Active"},
-			{OHTID: "OHT-44", Location: "Staff Quarters A to E Block (Type 2)", Length: 0.0, Width: 0.0, Depth: 0.0, CubicFt: 0.0, Capacity: 192000, ZoneType: "Staff Quarters", Status: "Active"},
-		}
-		for _, o := range ohts {
-			h.DB.Create(&o)
-		}
-	}
 }
 
 func (h *APIHandler) AddPlumbingRiverIntake(w http.ResponseWriter, r *http.Request) {
@@ -374,15 +295,86 @@ func (h *APIHandler) AddPlumbingRiverIntake(w http.ResponseWriter, r *http.Reque
 			var existing models.PlumbingRiverIntakeLog
 			if h.DB.Where("date = ?", v.Date).First(&existing).Error == nil {
 				existing.Intake = v.Intake
+				existing.Borewell = v.Borewell
+				existing.Well = v.Well
 				existing.Remarks = v.Remarks
 				h.DB.Save(&existing)
 			} else {
+				v.ID = 0
 				h.DB.Save(&v)
 			}
 		}
 	} else {
 		http.Error(w, "Invalid payload", http.StatusBadRequest)
 		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *APIHandler) AddPlumbingBorewell(w http.ResponseWriter, r *http.Request) {
+	PlumbingCache.mu.Lock()
+	PlumbingCache.data = nil
+	PlumbingCache.mu.Unlock()
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	var data []models.PlumbingBorewell
+	if err := json.NewDecoder(r.Body).Decode(&data); err == nil {
+		for _, v := range data {
+			h.DB.Save(&v)
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *APIHandler) DeletePlumbingBorewell(w http.ResponseWriter, r *http.Request) {
+	PlumbingCache.mu.Lock()
+	PlumbingCache.data = nil
+	PlumbingCache.mu.Unlock()
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id != "" {
+		h.DB.Delete(&models.PlumbingBorewell{}, id)
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *APIHandler) AddPlumbingWell(w http.ResponseWriter, r *http.Request) {
+	PlumbingCache.mu.Lock()
+	PlumbingCache.data = nil
+	PlumbingCache.mu.Unlock()
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	var data []models.PlumbingWell
+	if err := json.NewDecoder(r.Body).Decode(&data); err == nil {
+		for _, v := range data {
+			h.DB.Save(&v)
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *APIHandler) DeletePlumbingWell(w http.ResponseWriter, r *http.Request) {
+	PlumbingCache.mu.Lock()
+	PlumbingCache.data = nil
+	PlumbingCache.mu.Unlock()
+	EnableCors(&w)
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id != "" {
+		h.DB.Delete(&models.PlumbingWell{}, id)
 	}
 	w.WriteHeader(http.StatusOK)
 }

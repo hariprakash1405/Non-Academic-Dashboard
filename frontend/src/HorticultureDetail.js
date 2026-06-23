@@ -21,7 +21,7 @@ export default function HorticultureDetail({ currentUser }) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch('http://localhost:8085/api/horticulture');
+        const res = await fetch('/api/horticulture');
         if (res.ok) {
           const json = await res.json();
           setData(json);

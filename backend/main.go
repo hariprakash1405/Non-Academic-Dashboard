@@ -5,6 +5,7 @@ import (
 	"backend/models"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -64,6 +65,69 @@ func initDB() {
 		// DB.Exec("DROP TABLE IF EXISTS chiller_staffs CASCADE;")
 		// DB.Exec("DROP TABLE IF EXISTS chiller_billing_params CASCADE;")
 
+		// Users table
+		LogInfo("DB", "AutoMigrate: Users table")
+		DB.AutoMigrate(&models.User{})
+
+		// Seed Admin Users
+		var adminCount int64
+		DB.Model(&models.User{}).Where("role = ?", "dev_admin").Count(&adminCount)
+		if adminCount == 0 {
+			DB.Create(&models.User{Username: "dev.admin", Password: "Dev@2026", Name: "Developer Admin", Role: "dev_admin", UnitName: "All Units", Status: true})
+		}
+		
+		var deanCount int64
+		DB.Model(&models.User{}).Where("role = ?", "admin").Count(&deanCount)
+		if deanCount == 0 {
+			DB.Create(&models.User{Username: "dean.admin", Password: "Dean@2026", Name: "Dean / Admin", Role: "admin", UnitName: "All Units", Status: true})
+		}
+
+		// Seed Missing Unit Heads
+		unitUsernames := map[string]string{
+			"Power House":    "power.head",
+			"Chiller Plant":  "chiller.head",
+			"RO Plant":       "ro.head",
+			"Hostels":        "hostels.head",
+			"Transport":      "transport.head",
+			"Mess":           "mess.head",
+			"Medical Centre": "medical.head",
+			"STP":            "stp.head",
+			"Campus Maint.":  "maint.head",
+			"Sports/Gym":     "sports.head",
+			"TRC / NMC":      "trc.head",
+			"Horticulture":   "horticulture.head",
+			"Plumbing":       "plumbing.head",
+		}
+
+		for unit, username := range unitUsernames {
+			firstWord := unit
+			if spaceIdx := strings.Index(firstWord, " "); spaceIdx != -1 {
+				firstWord = firstWord[:spaceIdx]
+			}
+			if firstWord == "TRC" {
+				firstWord = "TRC"
+			}
+			expectedPassword := firstWord + "@123"
+
+			var user models.User
+			result := DB.Where("unit_name = ?", unit).First(&user)
+			if result.Error != nil {
+				DB.Create(&models.User{
+					Username: username,
+					Password: expectedPassword,
+					Name:     unit + " Head",
+					Role:     "unit_head",
+					UnitName: unit,
+					Status:   true,
+				})
+			} else if user.Password == "Password@123" {
+				// Fix the ones we just generated with the generic password
+				user.Password = expectedPassword
+				DB.Save(&user)
+			}
+		}
+		LogInfo("DB", "Seeded default users with custom passwords for all missing campus units")
+
 		// Hostel tables
 		LogInfo("DB", "AutoMigrate: Hostel tables")
 		DB.AutoMigrate(&models.HostelBlock{}, &models.Warden{}, &models.StudentDetail{}, &models.AbsentStudentDetail{}, &models.MaintenanceTicket{}, &models.DailyUsage{}, &models.HostelFloorDetail{})
@@ -88,11 +152,12 @@ func initDB() {
 		LogInfo("DB", "AutoMigrate: Plumbing tables")
 		DB.Exec("DROP TABLE IF EXISTS plumbing_sumps CASCADE;")
 		DB.Exec("DROP TABLE IF EXISTS plumbing_ohts CASCADE;")
-		DB.AutoMigrate(&models.PlumbingMotor{}, &models.PlumbingSump{}, &models.PlumbingOHT{}, &models.PlumbingManpower{}, &models.PlumbingRuntimeLog{}, &models.PlumbingRiverIntakeLog{})
+		DB.AutoMigrate(&models.PlumbingMotor{}, &models.PlumbingSump{}, &models.PlumbingOHT{}, &models.PlumbingManpower{}, &models.PlumbingRuntimeLog{}, &models.PlumbingRiverIntakeLog{}, &models.PlumbingBorewell{}, &models.PlumbingWell{})
+
 
 		// PowerHouse tables
 		LogInfo("DB", "AutoMigrate: PowerHouse tables")
-		DB.AutoMigrate(&models.PhTransformer{}, &models.PhDGSet{}, &models.PhUps{}, &models.PhSolarPv{}, &models.PhStaff{}, &models.PhDynamicLog{}, &models.PhDailyMetric{})
+		DB.AutoMigrate(&models.PhTransformer{}, &models.PhDGSet{}, &models.PhUps{}, &models.PhSolarPv{}, &models.PhStaff{}, &models.PhDynamicLog{}, &models.PhDailyMetric{}, &models.PhFeederDynamicLog{})
 	}
 }
 
@@ -115,6 +180,7 @@ func main() {
 	api.Chiller()
 	api.Horticulture()
 	api.Plumbing()
+	api.Hostels()
 
 	// Powerhouse routes
 	http.HandleFunc("/api/powerhouse/data", lm(api.HandlePowerHouseData))
@@ -122,6 +188,13 @@ func main() {
 	http.HandleFunc("/api/powerhouse/trend", lm(api.GetPowerHouseTrendData))
 
 	LogInfo("HTTP", "Registering routes...")
+
+	// Auth routes
+	http.HandleFunc("/api/login", lm(api.Login))
+	http.HandleFunc("/api/users", lm(api.GetUsers))
+	http.HandleFunc("/api/users/update", lm(api.AddOrUpdateUser))
+	http.HandleFunc("/api/users/delete", lm(api.DeleteUser))
+	http.HandleFunc("/api/users/bulk", lm(api.BulkAddUsers))
 
 	// Hostel routes
 	http.HandleFunc("/api/hostels", lm(api.GetHostels))
@@ -227,6 +300,10 @@ func main() {
 	http.HandleFunc("/api/plumbing/delete-manpower", lm(api.DeletePlumbingManpower))
 	http.HandleFunc("/api/plumbing/add-runtime", lm(api.AddPlumbingRuntime))
 	http.HandleFunc("/api/plumbing/add-river-intake", lm(api.AddPlumbingRiverIntake))
+	http.HandleFunc("/api/plumbing/add-borewell", lm(api.AddPlumbingBorewell))
+	http.HandleFunc("/api/plumbing/delete-borewell", lm(api.DeletePlumbingBorewell))
+	http.HandleFunc("/api/plumbing/add-well", lm(api.AddPlumbingWell))
+	http.HandleFunc("/api/plumbing/delete-well", lm(api.DeletePlumbingWell))
 
 	serverPort := os.Getenv("SERVER_PORT")
 	if serverPort == "" {
@@ -237,3 +314,5 @@ func main() {
 		LogError("HTTP", "Server stopped: %v", err)
 	}
 }
+
+

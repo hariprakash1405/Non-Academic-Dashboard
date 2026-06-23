@@ -8,6 +8,37 @@ const FieldBox = ({ label, children }) => (
   </div>
 );
 
+const FEEDERS = [
+  { id: '101', name: 'Chiller Plant Power 2' },
+  { id: '102', name: 'Temporary(Civil Works)' },
+  { id: '105', name: 'MV Panel 2' },
+  { id: '106', name: 'Training Academy' },
+  { id: '107', name: 'MV Panel 3' },
+  { id: '108', name: 'Boys Dining Power' },
+  { id: '117', name: 'Language Lab' },
+  { id: '119', name: 'Pearl Hostel Power' },
+  { id: '125', name: 'Day Scholar Dining Hall power' },
+  { id: '126', name: 'Biotech Lab' },
+  { id: '127', name: 'IT Lab' },
+  { id: '128', name: 'SM & FM Lab' },
+  { id: '129', name: 'Aero Power / Lighting' },
+  { id: '130', name: 'Internet Centre' },
+  { id: '131', name: 'CA Block Power Room' },
+  { id: '133', name: 'CA lab A/C' },
+  { id: '134', name: 'New Library' },
+  { id: '135', name: 'Pearl Hostel Lighting' },
+  { id: '136', name: 'Spinning Lab' },
+  { id: '137', name: 'Lsb1 Corridor Lighting' },
+  { id: '138', name: 'Lsb2 Corridor Lighting' },
+  { id: '139', name: 'Ganga and Yamuna hostel' },
+  { id: '140', name: 'New Mech Light' },
+  { id: '141', name: 'Narmadha Hostel and Dining hall' },
+  { id: '142', name: 'D.D block' },
+  { id: '143', name: 'Boys Hostel Mini Cafe' },
+  { id: '144', name: 'Powerhouse Solar' },
+  { id: '145', name: 'Diamond Hostel' }
+];
+
 export default function PowerHouseUnitForm({ onClose }) {
   const handleGenericFileUpload = (setState, schema, e) => {
     const file = e.target.files[0];
@@ -19,19 +50,122 @@ export default function PowerHouseUnitForm({ onClose }) {
         const workbook = XLSX.read(bstr, { type: 'binary' });
         const wsname = workbook.SheetNames[0];
         const ws = workbook.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws);
+        
+        const rawData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        let data = [];
+
+        const ALIASES = {
+          svcnum: ['ebserviceconnectionnumber', 'serviceconnectionnumber', 'servicenumber'],
+          type: ['servicetype', 'type'],
+          load: ['sanctionedloaddemandkva', 'sanctionedload', 'demand', 'load'],
+          voltage: ['supplyvoltagehtlt', 'supplyvoltage', 'voltage'],
+          ratingmake: ['transformerratingmake', 'dgsetratingmake', 'upsratingmake', 'ratingmake', 'rating', 'make', 'upsrating'],
+          year: ['transformerinstallationyear', 'installationdate', 'installationyear', 'year'],
+          feeders: ['numberoffeedersoutgoingpanels', 'numberoffeeders', 'feeders'],
+          count: ['numberofdgsets', 'count'],
+          lastservice: ['lastservicedate', 'lastservice'],
+          fuelcap: ['fueltankcapacity', 'fuelcap'],
+          location: ['location'],
+          lastamc: ['lastamcdate', 'lastamc'],
+          nextamc: ['nextamcdate', 'nextamc'],
+          batterycap: ['batterycapacity', 'batterycap', 'capacity', 'ah', 'capacityah'],
+          batterydate: ['installationdate', 'batterydate', 'installation'],
+          capacity: ['capacitykwp', 'capacity'],
+          panels: ['numberofpanels', 'panels'],
+          panelwatts: ['panelwatts'],
+          inverterrating: ['inverterrating'],
+          inverterservice: ['inverterservicedate', 'inverterservice', 'lastservicedateofinverter'],
+          cleaningfreq: ['cleaningfrequency', 'cleaningfreq'],
+          name: ['staffname', 'name'],
+          role: ['roledesignation', 'role'],
+          shift: ['shift'],
+          contact: ['contactinfo', 'contact'],
+          status: ['workingstatus', 'status']
+        };
+
+        let isTransposed = false;
+        let paramRowIndex = -1;
+
+        for (let i = 0; i < Math.min(rawData.length, 10); i++) {
+          if (rawData[i] && typeof rawData[i][0] === 'string') {
+            const val = rawData[i][0].toLowerCase();
+            if (val.includes('parameter') || val.includes('particular') || val.includes('description') || val.includes('detail')) {
+              isTransposed = true;
+              paramRowIndex = i;
+              break;
+            }
+          }
+        }
+        
+        // Fallback: If no explicit "Parameters" row found, check if column A looks like headers
+        if (!isTransposed) {
+           let colAHeaderHits = 0;
+           for (let i = 0; i < Math.min(rawData.length, 15); i++) {
+             if (rawData[i] && typeof rawData[i][0] === 'string') {
+               const cellVal = rawData[i][0].toLowerCase().replace(/[^a-z0-9]/g, '');
+               if (Object.values(ALIASES).flat().some(alias => cellVal.includes(alias) || alias.includes(cellVal))) {
+                 colAHeaderHits++;
+               }
+             }
+           }
+           if (colAHeaderHits >= 2) {
+             isTransposed = true;
+             // Assume the first row that had a match or the top of the file is the start
+             paramRowIndex = 0;
+           }
+        }
+
+        if (isTransposed) {
+          const numCols = Math.max(...rawData.map(row => row.length || 0));
+          
+          // Fill merged cells horizontally
+          for (let r = 0; r < rawData.length; r++) {
+            let lastVal = undefined;
+            for (let c = 1; c < numCols; c++) {
+              if (rawData[r][c] !== undefined && rawData[r][c] !== '') {
+                lastVal = rawData[r][c];
+              } else if (lastVal !== undefined) {
+                rawData[r][c] = lastVal;
+              }
+            }
+          }
+
+          const headers = rawData.map(row => row[0]);
+          for (let c = 1; c < numCols; c++) {
+            const obj = {};
+            let hasData = false;
+            for (let r = Math.max(0, paramRowIndex); r < rawData.length; r++) {
+              if (headers[r]) {
+                obj[headers[r]] = rawData[r][c];
+                if (rawData[r][c] !== undefined && rawData[r][c] !== '') hasData = true;
+              }
+            }
+            if (hasData) data.push(obj);
+          }
+        } else {
+          data = XLSX.utils.sheet_to_json(ws);
+        }
         
         const newRows = data.map(row => {
           const newObj = {};
           Object.keys(schema).forEach(key => {
-            const matchedKey = Object.keys(row).find(rKey => rKey.toLowerCase().replace(/[^a-z0-9]/g, '') === key.toLowerCase().replace(/[^a-z0-9]/g));
-            newObj[key] = matchedKey ? String(row[matchedKey] || '') : schema[key];
+            const cleanKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const possibleAliases = ALIASES[cleanKey] || [cleanKey];
+            
+            const matchedKey = Object.keys(row).find(rKey => {
+              const cleanRKey = String(rKey).toLowerCase().replace(/[^a-z0-9]/g, '');
+              if (!cleanRKey || cleanRKey === 'undefined' || cleanRKey === 'null') return false;
+              return possibleAliases.some(alias => cleanRKey.includes(alias) || alias.includes(cleanRKey));
+            });
+            newObj[key] = matchedKey && row[matchedKey] !== undefined ? String(row[matchedKey] || '') : schema[key];
           });
+          // Add a debug key to the object to track what headers were actually found
+          newObj._rawKeys = Object.keys(row).filter(k => k && k !== 'undefined' && k !== 'null').join(', ');
           return newObj;
         });
         
         if (newRows.length > 0) {
-          setState(prev => [...(prev || []), ...newRows]);
+          setState(newRows);
         }
       } catch (err) {
         console.error("Error parsing Excel:", err);
@@ -46,8 +180,19 @@ export default function PowerHouseUnitForm({ onClose }) {
   const [phTab, setPhTab] = useState('static'); 
   const [phStaticTab, setPhStaticTab] = useState('ebTransformer'); 
   const mkPhSlots = () => Array.from({length: 24}, (_, i) => ({ hour: `${i.toString().padStart(2, '0')}:00`, value: '' }));
+    
+  const initFeederDynamic = () => {
+    const map = {};
+    FEEDERS.forEach(f => {
+      map[f.id] = mkPhSlots().map(s => ({ ...s, feederId: f.id }));
+    });
+    return map;
+  };
+
   const [phDate, setPhDate] = useState(new Date().toISOString().split('T')[0]);
   const [ebDynamic, setEbDynamic] = useState(mkPhSlots());
+  const [feederDynamic, setFeederDynamic] = useState(initFeederDynamic());
+  const [activeFeederId, setActiveFeederId] = useState('101');
   const [solarDynamic, setSolarDynamic] = useState(mkPhSlots());
   const [dgDynamic, setDgDynamic] = useState(mkPhSlots());
   const [dgDailyFuel, setDgDailyFuel] = useState('');
@@ -62,7 +207,7 @@ export default function PowerHouseUnitForm({ onClose }) {
 
   useEffect(() => {
     
-      fetch(`http://localhost:8085/api/powerhouse?date=${phDate}`)
+      fetch(`/api/powerhouse?date=${phDate}`)
         .then(res => res.json())
         .then(data => {
           if (data) {
@@ -108,7 +253,20 @@ export default function PowerHouseUnitForm({ onClose }) {
               return res;
             };
 
+            const fillFeederSlots = (map, dataArr) => {
+              const res = JSON.parse(JSON.stringify(map));
+              if (!dataArr) return res;
+              dataArr.forEach(d => {
+                if (res[d.feederId]) {
+                  const idx = res[d.feederId].findIndex(s => s.hour === d.hour);
+                  if (idx !== -1) res[d.feederId][idx].value = d.value;
+                }
+              });
+              return res;
+            };
+
             setEbDynamic(fillSlots(mkPhSlots(), data.ebDynamic));
+            setFeederDynamic(fillFeederSlots(initFeederDynamic(), data.feederDynamic));
             setSolarDynamic(fillSlots(mkPhSlots(), data.solarDynamic));
             setDgDynamic(fillSlots(mkPhSlots(), data.dgDynamic));
             setDgDailyFuel(data.dgDailyFuel || '');
@@ -121,6 +279,16 @@ export default function PowerHouseUnitForm({ onClose }) {
       setter(prev => {
         const copy = [...prev];
         copy[idx] = { ...copy[idx], [field]: val };
+        return copy;
+      });
+    };
+
+    const handleFeederDynamicChange = (idx, val) => {
+      setFeederDynamic(prev => {
+        const copy = JSON.parse(JSON.stringify(prev));
+        if (copy[activeFeederId]) {
+          copy[activeFeederId][idx].value = val;
+        }
         return copy;
       });
     };
@@ -153,11 +321,12 @@ export default function PowerHouseUnitForm({ onClose }) {
           solarPv: phSolarPv,
           staff: phStaff,
           ebDynamic: ebDynamic,
+          feederDynamic: Object.values(feederDynamic).flat(),
           solarDynamic: solarDynamic,
           dgDynamic: dgDynamic,
           dgDailyFuel: parseFloat(dgDailyFuel) || 0
         };
-        const res = await fetch('http://localhost:8085/api/powerhouse/data', {
+        const res = await fetch('/api/powerhouse/data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -165,10 +334,12 @@ export default function PowerHouseUnitForm({ onClose }) {
         if (!res.ok) throw new Error('Network response was not ok');
         setPhSavedMsg('Power House data saved successfully!');
         window.dispatchEvent(new Event('unit-form-updated'));
-        setTimeout(() => setPhSavedMsg(''), 3000);
+        alert('Power House data saved successfully!');
+        if (onClose) onClose();
       } catch (err) {
         console.error(err);
         setPhSavedMsg('Failed to save data');
+        alert('Failed to save Power House data');
       } finally {
         setPhSaving(false);
       }
@@ -188,8 +359,8 @@ export default function PowerHouseUnitForm({ onClose }) {
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
-          {['static', 'eb_dynamic', 'solar_dynamic', 'dg_dynamic'].map(tab => (
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', paddingBottom: '12px' }}>
+          {['static', 'eb_dynamic', 'feeder_dynamic', 'solar_dynamic', 'dg_dynamic'].map(tab => (
             <button
               key={tab}
               onClick={() => setPhTab(tab)}
@@ -366,6 +537,11 @@ export default function PowerHouseUnitForm({ onClose }) {
                         <option value="Not Working">Not Working</option>
                       </select>
                     </FieldBox>
+                    {item._rawKeys && (
+                      <div style={{ gridColumn: '1 / -1', fontSize: '0.7rem', color: '#94a3b8', marginTop: '8px' }}>
+                        Debug - Keys Found: {item._rawKeys}
+                      </div>
+                    )}
                   </div>
                 ))}
                 <button onClick={() => addPhStaticRow(setPhUps, { location: '', ratingMake: '', lastAmc: '', nextAmc: '', batteryCap: '', batteryDate: '', status: 'Working' })} style={{ padding: '8px 16px', background: '#e0f2fe', color: '#0369a1', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}>+ Add UPS Unit</button>
@@ -470,6 +646,51 @@ export default function PowerHouseUnitForm({ onClose }) {
             <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end' }}>
               <button onClick={savePhData} disabled={phSaving} style={{ padding: '10px 24px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', opacity: phSaving ? 0.7 : 1 }}>
                 {phSaving ? 'Saving...' : 'Save Static Data'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {phTab === 'feeder_dynamic' && (
+          <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '16px' }}>
+              <h4 style={{ margin: 0, color: '#1e293b' }}>Feeder Dynamic Logs (Hourly Consumption)</h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '12px' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>Date:</label>
+                  <input type="date" value={phDate} onChange={e => setPhDate(e.target.value)} style={{ padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+                </div>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>Select Feeder:</span>
+                <select 
+                  style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px', minWidth: '220px', fontSize: '0.85rem' }} 
+                  value={activeFeederId} 
+                  onChange={(e) => setActiveFeederId(e.target.value)}
+                >
+                  {FEEDERS.map(f => (
+                    <option key={f.id} value={f.id}>{f.name} ({f.id})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px', padding: '16px', background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              {(feederDynamic[activeFeederId] || []).map((slot, idx) => (
+                <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>{slot.hour}</label>
+                  <input
+                    type="number"
+                    style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                    value={slot.value}
+                    onChange={(e) => handleFeederDynamicChange(idx, e.target.value)}
+                    placeholder="Units"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={savePhData} disabled={phSaving} style={{ padding: '10px 24px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', opacity: phSaving ? 0.7 : 1 }}>
+                {phSaving ? 'Saving...' : 'Save Feeder Logs'}
               </button>
             </div>
           </div>

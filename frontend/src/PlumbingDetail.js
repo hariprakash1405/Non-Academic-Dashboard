@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area, ComposedChart } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -15,17 +15,14 @@ export default function PlumbingDetail() {
   const [borewells, setBorewells] = useState([]);
   const [wells, setWells] = useState([]);
   const [runtimes, setRuntimes] = useState([]);
+  const [riverIntakes, setRiverIntakes] = useState([]);
   const [motorMonth, setMotorMonth] = useState(new Date().toISOString().slice(0, 7));
   const [intakeMonth, setIntakeMonth] = useState(new Date().toISOString().slice(0, 7));
   const [intakeView, setIntakeView] = useState('graph');
   const [showMotorLogs, setShowMotorLogs] = useState(false);
 
   const powerData = React.useMemo(() => {
-    if (!runtimes || runtimes.length === 0) {
-      return [
-        { day: 'No Data', consumption: 0, avg: 0 }
-      ];
-    }
+    if (!runtimes) return [];
     
     const motorKwMap = {};
     motors.forEach(m => {
@@ -50,42 +47,92 @@ export default function PlumbingDetail() {
     sortedDates.forEach(d => total += dateMap[d]);
     const avg = sortedDates.length > 0 ? total / sortedDates.length : 0;
 
-    return sortedDates.map(d => {
-      const dateObj = new Date(d);
+    const [yearStr, monthStr] = motorMonth.split('-');
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const day = String(i + 1).padStart(2, '0');
+      const dateKey = `${yearStr}-${monthStr}-${day}`;
+      const dateObj = new Date(dateKey);
       const dayStr = dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
       return {
         day: dayStr,
-        consumption: Math.round(dateMap[d]),
+        consumption: Math.round(dateMap[dateKey] || 0),
         avg: Math.round(avg)
       };
     });
   }, [runtimes, motors, motorMonth]);
 
   const sourceData = React.useMemo(() => {
-    const [year, month] = intakeMonth.split('-');
-    const daysInMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
-    const seed = parseInt(year) * parseInt(month);
-    return Array.from({ length: daysInMonth }, (_, i) => {
-      const day = i + 1;
-      const varianceRiver = Math.abs(Math.sin(seed + day)) * 60;
-      const varianceBore = Math.abs(Math.cos(seed + day)) * 30;
-      const varianceWell = Math.abs(Math.sin(seed * day)) * 20;
-      const river = Math.round(120 + varianceRiver);
-      const borewell = Math.round(80 + varianceBore);
-      const well = Math.round(40 + varianceWell);
-      return {
-        date: `${day.toString().padStart(2, '0')}-${month}`,
-        river, borewell, well, total: river + borewell + well
+    if (!riverIntakes) return [];
+    
+    const [targetYear, targetMonth] = intakeMonth.split('-');
+
+    const filtered = riverIntakes.filter(r => {
+      if (!r.date) return false;
+      // Handle YYYY-MM-DD
+      if (r.date.startsWith(intakeMonth)) return true;
+      
+      const parts = r.date.split('-');
+      // Handle DD-MM-YYYY
+      if (parts.length === 3 && parts[2] === targetYear && parts[1] === targetMonth) return true;
+      // Handle DD-MM (assume current year)
+      if (parts.length === 2 && parts[1] === targetMonth) return true;
+      
+      return false;
+    });
+
+    filtered.sort((a, b) => {
+      // Basic string sort is okay if format is uniform, but let's normalize to YYYY-MM-DD for sorting
+      const normalize = (d) => {
+        const p = d.split('-');
+        if (p.length === 3 && p[0].length === 4) return d; // YYYY-MM-DD
+        if (p.length === 3) return `${p[2]}-${p[1]}-${p[0]}`; // DD-MM-YYYY
+        if (p.length === 2) return `${targetYear}-${p[1]}-${p[0]}`; // DD-MM
+        return d;
+      };
+      return normalize(a.date).localeCompare(normalize(b.date));
+    });
+
+    const dataMap = {};
+    filtered.forEach(r => {
+      const dateParts = r.date.split('-');
+      let formattedDate = r.date;
+      if (dateParts.length === 3) {
+        if (dateParts[0].length === 4) {
+          formattedDate = `${dateParts[2]}-${dateParts[1]}`; // YYYY-MM-DD to DD-MM
+        } else {
+          formattedDate = `${dateParts[0]}-${dateParts[1]}`; // DD-MM-YYYY to DD-MM
+        }
+      }
+      dataMap[formattedDate] = {
+        river: r.intake || 0,
+        borewell: r.borewell || 0,
+        well: r.well || 0,
+        total: (r.intake || 0) + (r.borewell || 0) + (r.well || 0)
       };
     });
-  }, [intakeMonth]);
+
+    const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const day = String(i + 1).padStart(2, '0');
+      const formattedDate = `${day}-${targetMonth}`;
+      const existing = dataMap[formattedDate] || { river: 0, borewell: 0, well: 0, total: 0 };
+      return {
+        date: formattedDate,
+        ...existing
+      };
+    });
+  }, [intakeMonth, riverIntakes]);
 
   const totalRiver = sourceData.reduce((sum, d) => sum + d.river, 0);
   const totalBore = sourceData.reduce((sum, d) => sum + d.borewell, 0);
   const totalWell = sourceData.reduce((sum, d) => sum + d.well, 0);
 
   const fetchData = () => {
-    fetch('http://localhost:8085/api/plumbing')
+    fetch('/api/plumbing')
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -96,6 +143,7 @@ export default function PlumbingDetail() {
           setBorewells(data.borewells || []);
           setWells(data.wells || []);
           setRuntimes(data.runtimes || []);
+          setRiverIntakes(data.riverIntakes || []);
         }
       })
       .catch(console.error);
@@ -297,11 +345,11 @@ export default function PlumbingDetail() {
             </div>
             <div style={{ height: '400px', width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={powerData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <ComposedChart data={powerData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorConsumption" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#d97706" stopOpacity={1}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -309,12 +357,12 @@ export default function PlumbingDetail() {
                   <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dx={-10} />
                   <Tooltip 
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                    cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '3 3' }}
+                    cursor={{ fill: '#f1f5f9', opacity: 0.4 }}
                   />
                   <Legend verticalAlign="top" height={36} iconType="circle" />
-                  <Area type="monotone" name="Actual Consumption" dataKey="consumption" stroke="#f59e0b" strokeWidth={3} fillOpacity={1} fill="url(#colorConsumption)" />
+                  <Bar name="Actual Consumption" dataKey="consumption" fill="url(#colorConsumption)" radius={[4, 4, 0, 0]} maxBarSize={60} />
                   <Line type="monotone" name="Monthly Average" dataKey="avg" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                </AreaChart>
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
@@ -323,11 +371,11 @@ export default function PlumbingDetail() {
             <h3 style={{ marginTop: 0, marginBottom: '24px', fontSize: '1.2rem', color: '#0f172a' }}>Approximate Water Consumption (Day-wise)</h3>
             <div style={{ height: '300px', width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={powerData.map(d => ({ day: d.day, water: Math.round(d.consumption * 0.6), avgWater: Math.round(d.avg * 0.6) }))} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <ComposedChart data={powerData.map(d => ({ day: d.day, water: Math.round(d.consumption * 0.6), avgWater: Math.round(d.avg * 0.6) }))} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorWater" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#0284c7" stopOpacity={1}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -335,12 +383,12 @@ export default function PlumbingDetail() {
                   <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dx={-10} />
                   <Tooltip 
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                    cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '3 3' }}
+                    cursor={{ fill: '#f1f5f9', opacity: 0.4 }}
                   />
                   <Legend verticalAlign="top" height={36} iconType="circle" />
-                  <Area type="monotone" name="Water Consumed (KL)" dataKey="water" stroke="#0ea5e9" strokeWidth={3} fillOpacity={1} fill="url(#colorWater)" dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
+                  <Bar name="Water Consumed (KL)" dataKey="water" fill="url(#colorWater)" radius={[4, 4, 0, 0]} maxBarSize={60} />
                   <Line type="monotone" name="Monthly Average" dataKey="avgWater" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                </AreaChart>
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
@@ -397,19 +445,19 @@ export default function PlumbingDetail() {
               {intakeView === 'graph' ? (
                 <div style={{ height: '400px', width: '100%', animation: 'fadeIn 0.3s ease' }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={sourceData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                    <BarChart data={sourceData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorRiver" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.4}/>
-                          <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                          <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#0284c7" stopOpacity={1}/>
                         </linearGradient>
                         <linearGradient id="colorBore" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#059669" stopOpacity={1}/>
                         </linearGradient>
                         <linearGradient id="colorWell" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4}/>
-                          <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#4f46e5" stopOpacity={1}/>
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -417,13 +465,13 @@ export default function PlumbingDetail() {
                       <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} dx={-10} />
                       <Tooltip 
                         contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                        cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '3 3' }}
+                        cursor={{ fill: '#f1f5f9', opacity: 0.4 }}
                       />
                       <Legend verticalAlign="top" height={36} iconType="circle" />
-                      <Area type="monotone" name="River (KL)" dataKey="river" stackId="1" stroke="#0ea5e9" strokeWidth={2} fillOpacity={1} fill="url(#colorRiver)" />
-                      <Area type="monotone" name="Borewell (KL)" dataKey="borewell" stackId="1" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorBore)" />
-                      <Area type="monotone" name="Open Well (KL)" dataKey="well" stackId="1" stroke="#6366f1" strokeWidth={2} fillOpacity={1} fill="url(#colorWell)" />
-                    </AreaChart>
+                      <Bar name="River (KL)" dataKey="river" stackId="1" fill="url(#colorRiver)" radius={[0, 0, 4, 4]} maxBarSize={60} />
+                      <Bar name="Borewell (KL)" dataKey="borewell" stackId="1" fill="url(#colorBore)" maxBarSize={60} />
+                      <Bar name="Open Well (KL)" dataKey="well" stackId="1" fill="url(#colorWell)" radius={[4, 4, 0, 0]} maxBarSize={60} />
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
               ) : (
@@ -477,6 +525,7 @@ export default function PlumbingDetail() {
                   <th style={{ padding: '12px 16px', borderBottom: '2px solid #0d9488', textAlign: 'center' }}>Cubic ft</th>
                   <th style={{ padding: '12px 16px', borderBottom: '2px solid #0d9488', textAlign: 'center' }}>Tank Capacity (Litres)</th>
                   <th style={{ padding: '12px 16px', borderBottom: '2px solid #0d9488' }}>Zone / Type</th>
+                  <th style={{ padding: '12px 16px', borderBottom: '2px solid #0d9488', textAlign: 'center' }}>Motors</th>
                 </tr>
               </thead>
               <tbody>
@@ -498,6 +547,12 @@ export default function PlumbingDetail() {
                     <td style={{ padding: '12px 16px', color: '#475569' }}>
                       <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '0.8rem', background: '#f0fdfa', border: '1px solid #ccfbf1' }}>{oht.zoneType}</span>
                     </td>
+                    <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: '0.75rem' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                        <span style={{ background: oht.motor1Status === 'Running' ? '#dcfce7' : '#fef3c7', color: oht.motor1Status === 'Running' ? '#166534' : '#92400e', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>M1: {oht.motor1Status || 'Running'}</span>
+                        <span style={{ background: oht.motor2Status === 'Running' ? '#dcfce7' : '#fef3c7', color: oht.motor2Status === 'Running' ? '#166534' : '#92400e', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>M2: {oht.motor2Status || 'Standby'}</span>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -505,7 +560,7 @@ export default function PlumbingDetail() {
                 <tr style={{ background: '#115e59', color: '#ffffff', fontSize: '0.9rem', fontWeight: 700 }}>
                   <td colSpan="6" style={{ padding: '12px 16px', textAlign: 'right' }}>Total OHT Capacity<br/><span style={{fontSize:'0.75rem', fontWeight:'normal'}}>Note: Additional portable tanks included in total</span></td>
                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>{ohts.reduce((acc, curr) => acc + (Number(curr.capacity) || 0), 0).toLocaleString()}</td>
-                  <td style={{ padding: '12px 16px', textAlign: 'center' }}>Litres</td>
+                  <td colSpan="2" style={{ padding: '12px 16px', textAlign: 'center' }}>Litres</td>
                 </tr>
               </tfoot>
             </table>
@@ -528,6 +583,7 @@ export default function PlumbingDetail() {
                   <th style={{ padding: '12px 16px', borderBottom: '2px solid #2563eb', textAlign: 'center' }}>Cubic ft</th>
                   <th style={{ padding: '12px 16px', borderBottom: '2px solid #2563eb', textAlign: 'center' }}>Tank Capacity (Litres)</th>
                   <th style={{ padding: '12px 16px', borderBottom: '2px solid #2563eb' }}>Zone / Type</th>
+                  <th style={{ padding: '12px 16px', borderBottom: '2px solid #2563eb', textAlign: 'center' }}>Motors</th>
                 </tr>
               </thead>
               <tbody>
@@ -549,6 +605,12 @@ export default function PlumbingDetail() {
                     <td style={{ padding: '12px 16px', color: '#475569' }}>
                       <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '0.8rem', background: '#f1f5f9', border: '1px solid #e2e8f0' }}>{sump.zoneType}</span>
                     </td>
+                    <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: '0.75rem' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                        <span style={{ background: sump.motor1Status === 'Running' ? '#dcfce7' : '#fef3c7', color: sump.motor1Status === 'Running' ? '#166534' : '#92400e', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>M1: {sump.motor1Status || 'Running'}</span>
+                        <span style={{ background: sump.motor2Status === 'Running' ? '#dcfce7' : '#fef3c7', color: sump.motor2Status === 'Running' ? '#166534' : '#92400e', padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>M2: {sump.motor2Status || 'Standby'}</span>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -556,7 +618,7 @@ export default function PlumbingDetail() {
                 <tr style={{ background: '#1e3a8a', color: '#ffffff', fontSize: '0.9rem', fontWeight: 700 }}>
                   <td colSpan="6" style={{ padding: '12px 16px', textAlign: 'right' }}>Total Sump Capacity</td>
                   <td style={{ padding: '12px 16px', textAlign: 'center' }}>{sumps.reduce((acc, curr) => acc + (Number(curr.capacity) || 0), 0).toLocaleString()}</td>
-                  <td style={{ padding: '12px 16px', textAlign: 'center' }}>Litres</td>
+                  <td colSpan="2" style={{ padding: '12px 16px', textAlign: 'center' }}>Litres</td>
                 </tr>
               </tfoot>
             </table>
@@ -919,6 +981,14 @@ export default function PlumbingDetail() {
                     <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Consumed Today (Approx)</div>
                     <div style={{ fontWeight: 600, color: '#0ea5e9', marginTop: '4px' }}>{waterConsumptionData.find(d => d.name === selectedItem.ohtId)?.consumed?.toLocaleString() || 'N/A'} Litres</div>
                   </div>
+                  <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Motor 1 Status</div>
+                    <div style={{ fontWeight: 600, color: selectedItem.motor1Status === 'Running' ? '#166534' : '#92400e', marginTop: '4px' }}>{selectedItem.motor1Status || 'Running'}</div>
+                  </div>
+                  <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Motor 2 Status</div>
+                    <div style={{ fontWeight: 600, color: selectedItem.motor2Status === 'Running' ? '#166534' : '#92400e', marginTop: '4px' }}>{selectedItem.motor2Status || 'Standby'}</div>
+                  </div>
                 </>
               )}
 
@@ -943,6 +1013,14 @@ export default function PlumbingDetail() {
                   <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                     <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Consumed Today (Approx)</div>
                     <div style={{ fontWeight: 600, color: '#0ea5e9', marginTop: '4px' }}>{waterConsumptionData.find(d => d.name === selectedItem.sumpId)?.consumed?.toLocaleString() || 'N/A'} Litres</div>
+                  </div>
+                  <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Motor 1 Status</div>
+                    <div style={{ fontWeight: 600, color: selectedItem.motor1Status === 'Running' ? '#166534' : '#92400e', marginTop: '4px' }}>{selectedItem.motor1Status || 'Running'}</div>
+                  </div>
+                  <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Motor 2 Status</div>
+                    <div style={{ fontWeight: 600, color: selectedItem.motor2Status === 'Running' ? '#166534' : '#92400e', marginTop: '4px' }}>{selectedItem.motor2Status || 'Standby'}</div>
                   </div>
                 </>
               )}

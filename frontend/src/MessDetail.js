@@ -231,7 +231,7 @@ export default function MessDetail() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch('http://localhost:8085/api/mess/data');
+        const res = await fetch('/api/mess/data');
         if (res.ok) {
           const data = await res.json();
           if (data.blocks) setBlocks(data.blocks);
@@ -913,7 +913,7 @@ export default function MessDetail() {
     <div style={{ padding: '24px', fontFamily: '"Inter", sans-serif', background: '#f8fafc', minHeight: '100vh', color: '#1e293b' }}>
       
       {/* Header Panel */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', fontWeight: 800, margin: 0, background: 'linear-gradient(135deg, #4f46e5 0%, #312e81 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
             🍽️ Mess & Dining Management
@@ -924,7 +924,7 @@ export default function MessDetail() {
         </div>
 
         {/* Tab Buttons */}
-        <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: '12px', padding: '4px' }}>
+        <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: '12px', padding: '4px', overflowX: 'auto', maxWidth: '100%', WebkitOverflowScrolling: 'touch' }}>
           {[
             { id: 'dashboard', label: 'Dashboard' },
             { id: 'equipment', label: 'Equipment Health' },
@@ -947,6 +947,8 @@ export default function MessDetail() {
                 cursor: 'pointer',
                 boxShadow: activeTab === tab.id ? '0 4px 6px -1px rgba(0,0,0,0.05)' : 'none',
                 transition: 'all 0.2s',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
               }}
             >
               {tab.label}
@@ -961,7 +963,7 @@ export default function MessDetail() {
       {activeTab === 'dashboard' && (
         <div style={{ animation: 'fadeIn 0.3s ease' }}>
           
-          <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px', background: '#fff', padding: '12px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+          <div style={{ marginBottom: '20px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px', background: '#fff', padding: '12px 20px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
             <label style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.9rem' }}>📅 Select Date for Menu:</label>
             <input 
               type="date" 
@@ -1219,7 +1221,7 @@ export default function MessDetail() {
 
           {/* Block Selection Toggle */}
           <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px 20px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-            <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'center' }}>
               <label style={{ fontSize: '0.9rem', fontWeight: 700 }}>
                 Analyze Waste for Block:
                 <select
@@ -1261,7 +1263,7 @@ export default function MessDetail() {
 
             {/* Quick Metrics Bar */}
             {summaryMetrics && (
-              <div style={{ display: 'flex', gap: '20px', fontSize: '0.85rem' }}>
+              <div style={{ display: 'flex', gap: '20px', fontSize: '0.85rem', flexWrap: 'wrap' }}>
                 <div>Avg Weekly: <strong>{summaryMetrics.avgWeekly} g/head</strong></div>
                 <div style={{ color: '#b91c1c' }}>Peak: <strong>{summaryMetrics.highestVal} g/head</strong> ({summaryMetrics.highestDay})</div>
                 <div style={{ color: '#166534' }}>Low: <strong>{summaryMetrics.leastVal} g/head</strong> ({summaryMetrics.leastDay})</div>
@@ -1270,7 +1272,7 @@ export default function MessDetail() {
           </div>
 
           {/* Charts Grid */}
-          <div id="charts-grid-capture" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px', padding: '10px', background: '#f8fafc' }}>
+          <div id="charts-grid-capture" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px', marginBottom: '24px', padding: '10px', background: '#f8fafc' }}>
             
             {/* Chart 1: Day-wise waste */}
             <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
@@ -1384,7 +1386,7 @@ export default function MessDetail() {
             </label>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
             
             {/* Day of Week vs Day of Week Comparison */}
             <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.01)' }}>
@@ -1419,8 +1421,8 @@ export default function MessDetail() {
                 </label>
               </div>
 
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
-                <label style={{ flex: 1, fontSize: '0.75rem', fontWeight: 700 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+                <label style={{ flex: 1, minWidth: '140px', fontSize: '0.75rem', fontWeight: 700 }}>
                   Select First Date ({compDayOfWeek}):
                   <select
                     value={compDateLeft}
@@ -1497,8 +1499,8 @@ export default function MessDetail() {
               <h4 style={{ margin: '0 0 12px 0', fontSize: '1.05rem', fontWeight: 800 }}>📅 Custom Day Comparison</h4>
               <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '16px' }}>Compare details of any custom days side-by-side.</p>
 
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
-                <label style={{ flex: 1, fontSize: '0.75rem', fontWeight: 700 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+                <label style={{ flex: 1, minWidth: '140px', fontSize: '0.75rem', fontWeight: 700 }}>
                   First Day:
                   <input
                     type="date"
@@ -1526,7 +1528,7 @@ export default function MessDetail() {
                     const right = customDayComparisonResult.right;
                     return (
                       <>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '12px' }}>
                           <div>
                             <h5 style={{ margin: '0 0 8px 0', color: '#4f46e5' }}>{new Date(left.date).toLocaleString('default', { month: 'short' })} {left.dayNum} ({left.dayOfWeek})</h5>
                             <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1574,8 +1576,8 @@ export default function MessDetail() {
               </div>
               <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '16px' }}>Compare average weekly metrics across {compWeeklyMonth}.</p>
 
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
-                <label style={{ flex: 1, fontSize: '0.75rem', fontWeight: 700 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+                <label style={{ flex: 1, minWidth: '140px', fontSize: '0.75rem', fontWeight: 700 }}>
                   Week A:
                   <select
                     value={compWeekLeft}
@@ -1661,8 +1663,8 @@ export default function MessDetail() {
               </div>
               <p style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '16px' }}>Compare total waste outputs between different hostels for {compFacilityMonth}.</p>
 
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
-                <label style={{ flex: 1, fontSize: '0.75rem', fontWeight: 700 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
+                <label style={{ flex: 1, minWidth: '140px', fontSize: '0.75rem', fontWeight: 700 }}>
                   Facility A:
                   <select
                     value={compBlockLeft}
@@ -1689,7 +1691,7 @@ export default function MessDetail() {
               </div>
 
               {blockCompResult && (
-                <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
                   <div>
                     <h5 style={{ margin: '0 0 8px 0', color: '#4f46e5' }}>{blockCompResult.leftName}</h5>
                     <div style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>

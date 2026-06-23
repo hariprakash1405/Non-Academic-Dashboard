@@ -25,6 +25,8 @@ type PlumbingSump struct {
 	Capacity int     `json:"capacity"`
 	ZoneType string  `json:"zoneType"`
 	Status   string  `json:"status"`
+	Motor1Status string `json:"motor1Status"`
+	Motor2Status string `json:"motor2Status"`
 }
 
 type PlumbingOHT struct {
@@ -39,6 +41,8 @@ type PlumbingOHT struct {
 	ZoneType    string  `json:"zoneType"`
 	LastCleaned string  `json:"lastCleaned"`
 	Status      string  `json:"status"`
+	Motor1Status string `json:"motor1Status"`
+	Motor2Status string `json:"motor2Status"`
 }
 
 type PlumbingManpower struct {
@@ -69,8 +73,36 @@ type PlumbingRuntimeLog struct {
 }
 
 type PlumbingRiverIntakeLog struct {
-	ID      uint    `gorm:"primaryKey" json:"id"`
-	Date    string  `json:"date"`
-	Intake  float64 `json:"intake"`
-	Remarks string  `json:"remarks"`
+	ID       uint    `gorm:"primaryKey" json:"id"`
+	Date     string  `json:"date"`
+	Intake   float64 `json:"intake"`
+	Borewell float64 `json:"borewell"`
+	Well     float64 `json:"well"`
+	Remarks  string  `json:"remarks"`
+}
+
+type PlumbingBorewell struct {
+	ID         uint    `gorm:"primaryKey" json:"id"`
+	BorewellID string  `json:"borewellId"`
+	Location   string  `json:"location"`
+	Depth      float64 `json:"depth"`
+	MotorHP    string  `json:"motorHp"`
+	Motor      string  `json:"motor"`
+	MotorType  string  `json:"motorType"`
+	HoseLength float64 `json:"hoseLength"`
+	Status     string  `json:"status"`
+}
+
+type PlumbingWell struct {
+	ID         uint    `gorm:"primaryKey" json:"id"`
+	WellID     string  `json:"wellId"`
+	Location   string  `json:"location"`
+	Depth      float64 `json:"depth"`
+	Width      float64 `json:"width"`
+	Height     float64 `json:"height"`
+	MotorHP    string  `json:"motorHp"`
+	Motor      string  `json:"motor"`
+	MotorType  string  `json:"motorType"`
+	HoseLength float64 `json:"hoseLength"`
+	Status     string  `json:"status"`
 }

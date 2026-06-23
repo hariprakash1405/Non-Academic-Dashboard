@@ -276,6 +276,9 @@ func (h *APIHandler) UpdateBlock(w http.ResponseWriter, r *http.Request) {
 	var cleanedAbsentList []models.AbsentStudentDetail
 	for _, res := range input.AbsentList {
 		if res.Name != "" || res.RollNo != "" || res.RoomNo != "" {
+			if res.Date == "" {
+				res.Date = time.Now().Format("02 Jan")
+			}
 			cleanedAbsentList = append(cleanedAbsentList, res)
 		}
 	}
@@ -291,7 +294,7 @@ func (h *APIHandler) UpdateBlock(w http.ResponseWriter, r *http.Request) {
 		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&models.StudentDetail{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&models.AbsentStudentDetail{}).Error; err != nil {
+		if err := tx.Where("hostel_block_name = ? AND date = ?", input.Name, time.Now().Format("02 Jan")).Delete(&models.AbsentStudentDetail{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("hostel_block_name = ?", input.Name).Delete(&models.HostelFloorDetail{}).Error; err != nil {
@@ -304,6 +307,9 @@ func (h *APIHandler) UpdateBlock(w http.ResponseWriter, r *http.Request) {
 
 		residents := input.ResidentList
 		input.ResidentList = nil
+
+		absentList := input.AbsentList
+		input.AbsentList = nil
 
 		wardens := input.Wardens
 		input.Wardens = nil
@@ -329,6 +335,15 @@ func (h *APIHandler) UpdateBlock(w http.ResponseWriter, r *http.Request) {
 				wardens[i].HostelBlockName = input.Name
 			}
 			if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&wardens).Error; err != nil {
+				return err
+			}
+		}
+
+		if len(absentList) > 0 {
+			for i := range absentList {
+				absentList[i].HostelBlockName = input.Name
+			}
+			if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&absentList).Error; err != nil {
 				return err
 			}
 		}
@@ -828,3 +843,16 @@ func (h *APIHandler) DeleteBlock(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(blocks)
 }
+
+func (h *APIHandler) Hostels() {
+	var count int64
+	h.DB.Model(&models.HostelBlock{}).Count(&count)
+	if count == 0 {
+		h.DB.Create(&models.HostelBlock{Name: "Boys Hostel", Gender: "boys"})
+		h.DB.Create(&models.HostelBlock{Name: "Girls Hostel", Gender: "girls"})
+		fmt.Println("DB: Seeded initial Hostel blocks")
+	h.DB.Exec("UPDATE hostel_blocks SET gender = 'boys' WHERE gender = 'Male'")
+	h.DB.Exec("UPDATE hostel_blocks SET gender = 'girls' WHERE gender = 'Female'")
+	}
+}
+

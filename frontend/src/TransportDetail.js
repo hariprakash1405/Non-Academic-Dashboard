@@ -28,7 +28,7 @@ export default function TransportDetail({ currentUser }) {
 
   // Fetch all transport data from backend
   const fetchData = () => {
-    fetch('http://localhost:8085/api/transport')
+    fetch('/api/transport')
       .then(r => r.json())
       .then(d => setBackendData(d))
       .catch(() => { });
@@ -1492,7 +1492,7 @@ export default function TransportDetail({ currentUser }) {
         payload.actualEndTime = actualEndTime;
       }
 
-      fetch('http://localhost:8085/api/transport/update-trip-status', {
+      fetch('/api/transport/update-trip-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

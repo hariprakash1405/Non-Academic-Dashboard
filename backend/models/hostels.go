@@ -71,6 +71,7 @@ type StudentDetail struct {
 
 type AbsentStudentDetail struct {
 	RollNo          string `gorm:"primaryKey" json:"rollNo"`
+	Date            string `gorm:"primaryKey" json:"date"`
 	HostelBlockName string `json:"-"`
 	Name            string `json:"name"`
 	RoomNo          string `json:"roomNo"`

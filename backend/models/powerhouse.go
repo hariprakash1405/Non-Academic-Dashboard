@@ -82,6 +82,16 @@ type PhDynamicLog struct {
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
+type PhFeederDynamicLog struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Date      string    `json:"date"`
+	FeederID  string    `json:"feederId"`
+	Hour      string    `json:"hour"`
+	Value     string    `json:"value"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 type PhDailyMetric struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
 	Date        string    `json:"date"`
@@ -97,8 +107,9 @@ type PowerHousePayload struct {
 	Ups           []PhUps           `json:"ups"`
 	SolarPv       []PhSolarPv       `json:"solarPv"`
 	Staff         []PhStaff         `json:"staff"`
-	EbDynamic     []PhDynamicLog    `json:"ebDynamic"`
-	SolarDynamic  []PhDynamicLog    `json:"solarDynamic"`
-	DgDynamic     []PhDynamicLog    `json:"dgDynamic"`
-	DgDailyFuel   float64           `json:"dgDailyFuel"`
+	EbDynamic     []PhDynamicLog       `json:"ebDynamic"`
+	SolarDynamic  []PhDynamicLog       `json:"solarDynamic"`
+	DgDynamic     []PhDynamicLog       `json:"dgDynamic"`
+	FeederDynamic []PhFeederDynamicLog `json:"feederDynamic"`
+	DgDailyFuel   float64              `json:"dgDailyFuel"`
 }
