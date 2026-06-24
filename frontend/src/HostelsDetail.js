@@ -1,3 +1,4 @@
+import { API_BASE } from './config';
 import React, { useEffect, useState, useMemo } from 'react';
 import {
   BarChart,
@@ -136,7 +137,7 @@ export default function HostelsDetail({ currentUser }) {
   useEffect(() => {
     const fetchBackend = async () => {
       try {
-        const res = await fetch('/api/hostels');
+        const res = await fetch(API_BASE + '/api/hostels');
         if (res.ok) {
           const data = await res.json();
           setBackendData(data);
@@ -718,7 +719,7 @@ export default function HostelsDetail({ currentUser }) {
                             onChange={async (e) => {
                               const newStatus = e.target.value;
                               try {
-                                const res = await fetch('/api/hostels/update-complaint-status', {
+                                const res = await fetch(API_BASE + '/api/hostels/update-complaint-status', {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({ id: t.id, status: newStatus })
@@ -1731,7 +1732,7 @@ export default function HostelsDetail({ currentUser }) {
               }
 
               try {
-                const res = await fetch('/api/hostels/raise-complaint', {
+                const res = await fetch(API_BASE + '/api/hostels/raise-complaint', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -1939,7 +1940,7 @@ export default function HostelsDetail({ currentUser }) {
               }
 
               try {
-                const res = await fetch('/api/hostels/rename-block', {
+                const res = await fetch(API_BASE + '/api/hostels/rename-block', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ oldName: renameTarget.oldName, newName: newNameClean })
@@ -2080,7 +2081,7 @@ export default function HostelsDetail({ currentUser }) {
               }
 
               try {
-                const res = await fetch('/api/hostels/add-block', {
+                const res = await fetch(API_BASE + '/api/hostels/add-block', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -2522,7 +2523,7 @@ export default function HostelsDetail({ currentUser }) {
                 id="btn-confirm-delete"
                 onClick={async () => {
                   try {
-                    const res = await fetch('/api/hostels/delete-block', {
+                    const res = await fetch(API_BASE + '/api/hostels/delete-block', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ name: deleteTarget })

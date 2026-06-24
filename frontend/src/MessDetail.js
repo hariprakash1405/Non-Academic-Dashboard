@@ -1,3 +1,4 @@
+import { API_BASE } from './config';
 import React, { useState, useMemo, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -231,7 +232,7 @@ export default function MessDetail() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch('/api/mess/data');
+        const res = await fetch(API_BASE + '/api/mess/data');
         if (res.ok) {
           const data = await res.json();
           if (data.blocks) setBlocks(data.blocks);

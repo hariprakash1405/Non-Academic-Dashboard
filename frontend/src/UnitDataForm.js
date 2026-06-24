@@ -1,3 +1,4 @@
+import { API_BASE } from './config';
 import React, { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 
@@ -74,7 +75,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
 
   // ─── Chiller Plant state ──────────────────────────────────────────────────
   const mkSlots = () => ({ s1: '', s2: '', s3: '', s4: '' });
-  const [chillerDate,  setChillerDate]  = useState(new Date().toISOString().split('T')[0]);
+  const [chillerDate, setChillerDate] = useState(new Date().toISOString().split('T')[0]);
   const [u1, setU1] = useState(mkSlots());
   const [u2, setU2] = useState(mkSlots());
   const [u3, setU3] = useState(mkSlots());
@@ -86,9 +87,9 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const [chillerSavedMsg, setChillerSavedMsg] = useState('');
 
   const [chillerTab, setChillerTab] = useState('static');
-        const [ahuUnits, setAhuUnits] = useState([{ block: '', floor: '', loc: '', type: '', cap: '', qty: '', totCap: '', hp: '', totHp: '', area: '' }]);
+  const [ahuUnits, setAhuUnits] = useState([{ block: '', floor: '', loc: '', type: '', cap: '', qty: '', totCap: '', hp: '', totHp: '', area: '' }]);
   const [existingAhuUnits, setExistingAhuUnits] = useState([]);
-  
+
   const [splitAcUnits, setSplitAcUnits] = useState([{ make: '', ton: '', model: '', block: '', dept: '', qty: '', totTon: '', loc: '' }]);
   const [existingSplitAcUnits, setExistingSplitAcUnits] = useState([]);
 
@@ -111,13 +112,17 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const [existingOperatingLogs, setExistingOperatingLogs] = useState([]);
 
   // ─── Power House state ──────────────────────────────────────────────────
-  const [phTab, setPhTab] = useState('static'); 
-  const [phStaticTab, setPhStaticTab] = useState('ebTransformer'); 
-  const mkPhSlots = () => Array.from({length: 24}, (_, i) => ({ hour: `${i.toString().padStart(2, '0')}:00`, value: '' }));
+  const [phTab, setPhTab] = useState('static');
+  const [phStaticTab, setPhStaticTab] = useState('ebTransformer');
+  const mkPhSlots = () => Array.from({ length: 24 }, (_, i) => ({ hour: `${i.toString().padStart(2, '0')}:00`, value: '' }));
   const [phDate, setPhDate] = useState(new Date().toISOString().split('T')[0]);
   const [ebDynamic, setEbDynamic] = useState(mkPhSlots());
-  const [solarDynamic, setSolarDynamic] = useState(mkPhSlots());
-  const [dgDynamic, setDgDynamic] = useState(mkPhSlots());
+  const [solarDynamic, setSolarDynamic] = useState([{ hour: 'Daily', value: '', generation: '' }]);
+  const [dgDynamic, setDgDynamic] = useState([
+    { hour: 'Peak Hour (6AM-10AM & 6PM-10PM)', value: '' },
+    { hour: 'Non Peak Hour (10AM-6PM)', value: '' },
+    { hour: 'Night Hour (10PM-6AM)', value: '' }
+  ]);
   const [dgDailyFuel, setDgDailyFuel] = useState('');
   const [phSaving, setPhSaving] = useState(false);
   const [phSavedMsg, setPhSavedMsg] = useState('');
@@ -130,7 +135,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
 
   useEffect(() => {
     if (unitName === 'Power House') {
-      fetch(`/api/powerhouse?date=${phDate}`)
+      fetch(API_BASE + `/api/powerhouse?date=${phDate}`)
         .then(res => res.json())
         .then(data => {
           if (data) {
@@ -177,8 +182,12 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             };
 
             setEbDynamic(fillSlots(mkPhSlots(), data.ebDynamic));
-            setSolarDynamic(fillSlots(mkPhSlots(), data.solarDynamic));
-            setDgDynamic(fillSlots(mkPhSlots(), data.dgDynamic));
+            setSolarDynamic(fillSlots([{ hour: 'Daily', value: '', generation: '' }], data.solarDynamic));
+            setDgDynamic(fillSlots([
+              { hour: 'Peak Hour (6AM-10AM & 6PM-10PM)', value: '' },
+              { hour: 'Non Peak Hour (10AM-6PM)', value: '' },
+              { hour: 'Night Hour (10PM-6AM)', value: '' }
+            ], data.dgDynamic));
             setDgDailyFuel(data.dgDailyFuel || '');
           }
         })
@@ -187,7 +196,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   }, [unitName, phDate]);
 
   useEffect(() => {
-    fetch('/api/chiller/ahu-units')
+    fetch(API_BASE + '/api/chiller/ahu-units')
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -196,7 +205,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       })
       .catch(console.error);
 
-    fetch('/api/chiller/split-ac')
+    fetch(API_BASE + '/api/chiller/split-ac')
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -205,7 +214,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       })
       .catch(console.error);
 
-    fetch('/api/chiller/vrv-units')
+    fetch(API_BASE + '/api/chiller/vrv-units')
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -214,7 +223,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       })
       .catch(console.error);
 
-    fetch('/api/chiller/cold-room')
+    fetch(API_BASE + '/api/chiller/cold-room')
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -223,11 +232,11 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       })
       .catch(console.error);
 
-    fetch('/api/chiller/staff').then(res => res.json()).then(data => { if (data) setExistingStaff(data); }).catch(console.error);
-    fetch('/api/chiller/equipment').then(res => res.json()).then(data => { if (data) setExistingEquipments(data); }).catch(console.error);
-    fetch('/api/chiller/plant-specs').then(res => res.json()).then(data => { if (data) setExistingPlantSpecs(data); }).catch(console.error);
-    fetch('/api/chiller/unit-specs').then(res => res.json()).then(data => { if (data) setExistingUnitSpecs(data); }).catch(console.error);
-    fetch('/api/chiller/breakdowns')
+    fetch(API_BASE + '/api/chiller/staff').then(res => res.json()).then(data => { if (data) setExistingStaff(data); }).catch(console.error);
+    fetch(API_BASE + '/api/chiller/equipment').then(res => res.json()).then(data => { if (data) setExistingEquipments(data); }).catch(console.error);
+    fetch(API_BASE + '/api/chiller/plant-specs').then(res => res.json()).then(data => { if (data) setExistingPlantSpecs(data); }).catch(console.error);
+    fetch(API_BASE + '/api/chiller/unit-specs').then(res => res.json()).then(data => { if (data) setExistingUnitSpecs(data); }).catch(console.error);
+    fetch(API_BASE + '/api/chiller/breakdowns')
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -236,12 +245,12 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       })
       .catch(console.error);
 
-    fetch('/api/chiller/operating-logs')
+    fetch(API_BASE + '/api/chiller/operating-logs')
       .then(res => res.json())
       .then(data => { if (data) setExistingOperatingLogs(data); })
       .catch(console.error);
 
-    fetch('/api/mess/data')
+    fetch(API_BASE + '/api/mess/data')
       .then(res => res.json())
       .then(data => { if (data && data.wasteLogs) setExistingMessLogs(data.wasteLogs); })
       .catch(console.error);
@@ -268,7 +277,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         setP2({ s1: log.pump2Slot1 || '', s2: log.pump2Slot2 || '', s3: log.pump2Slot3 || '', s4: log.pump2Slot4 || '' });
         setP3({ s1: log.pump3Slot1 || '', s2: log.pump3Slot2 || '', s3: log.pump3Slot3 || '', s4: log.pump3Slot4 || '' });
         setP4({ s1: log.pump4Slot1 || '', s2: log.pump4Slot2 || '', s3: log.pump4Slot3 || '', s4: log.pump4Slot4 || '' });
-        
+
         setRatePeak(log.ratePeak || '');
         setRateOffPeak(log.rateOffPeak || '');
         setRateNight(log.rateNight || '');
@@ -318,19 +327,19 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   }, [values.date, values.blockName, existingMessLogs, unitName, messTab]);
 
   // Auto-calculated totals (mirrors backend logic)
-  const cPeak    = fv(u1.s1) + fv(u2.s1) + fv(u3.s1);
+  const cPeak = fv(u1.s1) + fv(u2.s1) + fv(u3.s1);
   const cNonPeak = fv(u1.s2) + fv(u1.s3) + fv(u2.s2) + fv(u2.s3) + fv(u3.s2) + fv(u3.s3);
-  const cNight   = fv(u1.s4) + fv(u2.s4) + fv(u3.s4);
-  const pPeak    = fv(p1.s1) + fv(p2.s1) + fv(p3.s1);
+  const cNight = fv(u1.s4) + fv(u2.s4) + fv(u3.s4);
+  const pPeak = fv(p1.s1) + fv(p2.s1) + fv(p3.s1);
   const pNonPeak = fv(p1.s2) + fv(p1.s3) + fv(p2.s2) + fv(p2.s3) + fv(p3.s2) + fv(p3.s3);
-  const pNight   = fv(p1.s4) + fv(p2.s4) + fv(p3.s4);
+  const pNight = fv(p1.s4) + fv(p2.s4) + fv(p3.s4);
 
   const onSaveChillerOperating = async () => {
     setChillerSaving(true);
     setChillerSavedMsg('');
     const payload = {
       date: chillerDate,
-      
+
       ratePeak: fv(ratePeak), rateOffPeak: fv(rateOffPeak), rateNight: fv(rateNight),
       chillerWaterIn: fv(chillerWaterIn), chillerWaterOut: fv(chillerWaterOut),
       condenserWaterIn: fv(condenserWaterIn), condenserWaterOut: fv(condenserWaterOut),
@@ -343,7 +352,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       pump4Slot1: 0, pump4Slot2: 0, pump4Slot3: 0, pump4Slot4: 0,
     };
     try {
-      const res = await fetch('/api/chiller/add-operating-log', {
+      const res = await fetch(API_BASE + '/api/chiller/add-operating-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -352,7 +361,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         setChillerSavedMsg('✓ Data saved successfully to the database!');
         setAhuUnits([{ block: '', floor: '', loc: '', type: '', cap: '', qty: '', totCap: '', hp: '', totHp: '', area: '' }]);
         window.dispatchEvent(new Event('unit-form-updated'));
-        fetch('/api/chiller/operating-logs').then(r => r.json()).then(d => { if (d) setExistingOperatingLogs(d); }).catch(console.error);
+        fetch(API_BASE + '/api/chiller/operating-logs').then(r => r.json()).then(d => { if (d) setExistingOperatingLogs(d); }).catch(console.error);
         setTimeout(() => { setChillerSavedMsg(''); if (onClose) onClose(); }, 1500);
       } else {
         setChillerSavedMsg('✗ Failed to save – check backend connection.');
@@ -371,7 +380,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         cap: fv(unit.cap), qty: parseInt(unit.qty) || 1, totCap: fv(unit.totCap),
         hp: fv(unit.hp), totHp: fv(unit.totHp), area: fv(unit.area)
       };
-      await fetch('/api/chiller/update-ahu-unit', {
+      await fetch(API_BASE + '/api/chiller/update-ahu-unit', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
       alert('Unit updated successfully!');
@@ -384,7 +393,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const handleDeleteExistingAhuUnit = async (id) => {
     if (!window.confirm('Delete this unit?')) return;
     try {
-      await fetch(`/api/chiller/delete-ahu-unit?id=${id}`, { method: 'DELETE' });
+      await fetch(API_BASE + `/api/chiller/delete-ahu-unit?id=${id}`, { method: 'DELETE' });
       setExistingAhuUnits(existingAhuUnits.filter(u => u.id !== id));
       alert('Unit deleted successfully!');
       window.dispatchEvent(new Event('unit-form-updated'));
@@ -413,7 +422,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         area: fv(u.area)
       }));
 
-      const res = await fetch('/api/chiller/add-ahu-units', {
+      const res = await fetch(API_BASE + '/api/chiller/add-ahu-units', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -446,7 +455,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         totTon: fv(u.totTon)
       }));
 
-      const res = await fetch('/api/chiller/add-split-ac', {
+      const res = await fetch(API_BASE + '/api/chiller/add-split-ac', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -471,7 +480,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         ...unit,
         ton: fv(unit.ton), qty: parseInt(unit.qty) || 1, totTon: fv(unit.totTon)
       };
-      await fetch('/api/chiller/update-split-ac', {
+      await fetch(API_BASE + '/api/chiller/update-split-ac', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
       alert('Unit updated successfully!');
@@ -484,7 +493,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const handleDeleteExistingSplitAcUnit = async (id) => {
     if (!window.confirm('Delete this unit?')) return;
     try {
-      await fetch(`/api/chiller/delete-split-ac?id=${id}`, { method: 'DELETE' });
+      await fetch(API_BASE + `/api/chiller/delete-split-ac?id=${id}`, { method: 'DELETE' });
       setExistingSplitAcUnits(existingSplitAcUnits.filter(u => u.id !== id));
       alert('Unit deleted successfully!');
       window.dispatchEvent(new Event('unit-form-updated'));
@@ -505,7 +514,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         ...u, ton: fv(u.ton), qty: parseInt(u.qty) || 1, totTon: fv(u.totTon)
       }));
 
-      const res = await fetch('/api/chiller/add-vrv-units', {
+      const res = await fetch(API_BASE + '/api/chiller/add-vrv-units', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
 
@@ -525,7 +534,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const handleUpdateExistingVrvUnit = async (unit) => {
     try {
       const payload = { ...unit, ton: fv(unit.ton), qty: parseInt(unit.qty) || 1, totTon: fv(unit.totTon) };
-      await fetch('/api/chiller/update-vrv-unit', {
+      await fetch(API_BASE + '/api/chiller/update-vrv-unit', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
       alert('Unit updated successfully!');
@@ -536,7 +545,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const handleDeleteExistingVrvUnit = async (id) => {
     if (!window.confirm('Delete this unit?')) return;
     try {
-      await fetch(`/api/chiller/delete-vrv-unit?id=${id}`, { method: 'DELETE' });
+      await fetch(API_BASE + `/api/chiller/delete-vrv-unit?id=${id}`, { method: 'DELETE' });
       setExistingVrvUnits(existingVrvUnits.filter(u => u.id !== id));
       alert('Unit deleted successfully!');
       window.dispatchEvent(new Event('unit-form-updated'));
@@ -545,7 +554,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
 
   const handleUpdateBreakdown = async (unit) => {
     try {
-      await fetch('/api/chiller/update-breakdown', {
+      await fetch(API_BASE + '/api/chiller/update-breakdown', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(unit)
       });
       alert('Breakdown updated successfully!');
@@ -558,7 +567,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const handleDeleteBreakdown = async (id) => {
     if (!window.confirm('Delete this breakdown?')) return;
     try {
-      await fetch(`/api/chiller/delete-breakdown?id=${id}`, { method: 'DELETE' });
+      await fetch(API_BASE + `/api/chiller/delete-breakdown?id=${id}`, { method: 'DELETE' });
       setExistingBreakdowns(existingBreakdowns.filter(u => u.id !== id));
       alert('Breakdown deleted successfully!');
       window.dispatchEvent(new Event('unit-form-updated'));
@@ -573,13 +582,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     try {
       const valid = staff.filter(u => u.name || u.role);
       if (valid.length > 0) {
-        await fetch('/api/chiller/add-staff', {
+        await fetch(API_BASE + '/api/chiller/add-staff', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid),
         });
       }
       setChillerSavedMsg('✓ Saved Staff Data');
       setStaff([{ name: '', role: '', shift: '', attendance: '', contact: '', dateJoined: '' }]);
-      fetch('/api/chiller/staff').then(r => r.json()).then(d => setExistingStaff(d || []));
+      fetch(API_BASE + '/api/chiller/staff').then(r => r.json()).then(d => setExistingStaff(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) {
       console.error(e);
@@ -590,15 +599,15 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   };
   const handleDeleteStaff = async (id) => {
     try {
-      await fetch(`/api/chiller/delete-staff?id=${id}`, { method: 'DELETE' });
-      fetch('/api/chiller/staff').then(r => r.json()).then(d => setExistingStaff(d || []));
+      await fetch(API_BASE + `/api/chiller/delete-staff?id=${id}`, { method: 'DELETE' });
+      fetch(API_BASE + '/api/chiller/staff').then(r => r.json()).then(d => setExistingStaff(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) { console.error(e); }
   };
 
   const handleUpdateStaff = async (staffMember) => {
     try {
-      await fetch('/api/chiller/update-staff', {
+      await fetch(API_BASE + '/api/chiller/update-staff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(staffMember)
@@ -616,13 +625,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     try {
       const valid = equipments.filter(u => u.name || u.model);
       if (valid.length > 0) {
-        await fetch('/api/chiller/add-equipment', {
+        await fetch(API_BASE + '/api/chiller/add-equipment', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid),
         });
       }
       setChillerSavedMsg('✓ Saved Equipments Data');
       setEquipments([{ name: '', model: '', capacity: '', type: '', status: '', load: '', tempIn: '', tempOut: '', refrigerant: '', lastService: '', nextService: '', health: 100 }]);
-      fetch('/api/chiller/equipment').then(r => r.json()).then(d => setExistingEquipments(d || []));
+      fetch(API_BASE + '/api/chiller/equipment').then(r => r.json()).then(d => setExistingEquipments(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) {
       console.error(e);
@@ -633,15 +642,15 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   };
   const handleDeleteEquipment = async (id) => {
     try {
-      await fetch(`/api/chiller/delete-equipment?id=${id}`, { method: 'DELETE' });
-      fetch('/api/chiller/equipment').then(r => r.json()).then(d => setExistingEquipments(d || []));
+      await fetch(API_BASE + `/api/chiller/delete-equipment?id=${id}`, { method: 'DELETE' });
+      fetch(API_BASE + '/api/chiller/equipment').then(r => r.json()).then(d => setExistingEquipments(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) { console.error(e); }
   };
 
   const handleUpdateEquipment = async (equipment) => {
     try {
-      await fetch('/api/chiller/update-equipment', {
+      await fetch(API_BASE + '/api/chiller/update-equipment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(equipment)
@@ -659,13 +668,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     try {
       const valid = plantSpecs.filter(u => u.parameter || u.value);
       if (valid.length > 0) {
-        await fetch('/api/chiller/add-plant-specs', {
+        await fetch(API_BASE + '/api/chiller/add-plant-specs', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid),
         });
       }
       setChillerSavedMsg('✓ Saved Plant Specs');
       setPlantSpecs([{ parameter: '', value: '', unit: '', remarks: '' }]);
-      fetch('/api/chiller/plant-specs').then(r => r.json()).then(d => setExistingPlantSpecs(d || []));
+      fetch(API_BASE + '/api/chiller/plant-specs').then(r => r.json()).then(d => setExistingPlantSpecs(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) {
       console.error(e);
@@ -676,14 +685,14 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   };
   const handleDeletePlantSpec = async (id) => {
     try {
-      await fetch(`/api/chiller/delete-plant-spec?id=${id}`, { method: 'DELETE' });
-      fetch('/api/chiller/plant-specs').then(r => r.json()).then(d => setExistingPlantSpecs(d || []));
+      await fetch(API_BASE + `/api/chiller/delete-plant-spec?id=${id}`, { method: 'DELETE' });
+      fetch(API_BASE + '/api/chiller/plant-specs').then(r => r.json()).then(d => setExistingPlantSpecs(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) { console.error(e); }
   };
   const handleUpdatePlantSpec = async (u) => {
     try {
-      await fetch('/api/chiller/update-plant-spec', {
+      await fetch(API_BASE + '/api/chiller/update-plant-spec', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(u)
       });
       window.dispatchEvent(new Event('unit-form-updated'));
@@ -696,13 +705,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     try {
       const valid = unitSpecs.filter(u => u.param || u.unit1);
       if (valid.length > 0) {
-        await fetch('/api/chiller/add-unit-specs', {
+        await fetch(API_BASE + '/api/chiller/add-unit-specs', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid),
         });
       }
       setChillerSavedMsg('✓ Saved Unit Specs');
       setUnitSpecs([{ param: '', unit1: '', unit2: '', unit3: '' }]);
-      fetch('/api/chiller/unit-specs').then(r => r.json()).then(d => setExistingUnitSpecs(d || []));
+      fetch(API_BASE + '/api/chiller/unit-specs').then(r => r.json()).then(d => setExistingUnitSpecs(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) {
       console.error(e);
@@ -713,14 +722,14 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   };
   const handleDeleteUnitSpec = async (id) => {
     try {
-      await fetch(`/api/chiller/delete-unit-spec?id=${id}`, { method: 'DELETE' });
-      fetch('/api/chiller/unit-specs').then(r => r.json()).then(d => setExistingUnitSpecs(d || []));
+      await fetch(API_BASE + `/api/chiller/delete-unit-spec?id=${id}`, { method: 'DELETE' });
+      fetch(API_BASE + '/api/chiller/unit-specs').then(r => r.json()).then(d => setExistingUnitSpecs(d || []));
       window.dispatchEvent(new Event('unit-form-updated'));
     } catch (e) { console.error(e); }
   };
   const handleUpdateUnitSpec = async (u) => {
     try {
-      await fetch('/api/chiller/update-unit-spec', {
+      await fetch(API_BASE + '/api/chiller/update-unit-spec', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(u)
       });
       window.dispatchEvent(new Event('unit-form-updated'));
@@ -735,7 +744,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       return;
     }
     try {
-      const res = await fetch('/api/chiller/add-breakdowns', {
+      const res = await fetch(API_BASE + '/api/chiller/add-breakdowns', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid)
       });
       if (res.ok) {
@@ -763,7 +772,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         ...u, ton: fv(u.ton), qty: parseInt(u.qty) || 1, totTon: fv(u.totTon)
       }));
 
-      const res = await fetch('/api/chiller/add-cold-room', {
+      const res = await fetch(API_BASE + '/api/chiller/add-cold-room', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
 
@@ -783,7 +792,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const handleUpdateExistingColdRoomUnit = async (unit) => {
     try {
       const payload = { ...unit, ton: fv(unit.ton), qty: parseInt(unit.qty) || 1, totTon: fv(unit.totTon) };
-      await fetch('/api/chiller/update-cold-room', {
+      await fetch(API_BASE + '/api/chiller/update-cold-room', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
       alert('Unit updated successfully!');
@@ -794,7 +803,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
   const handleDeleteExistingColdRoomUnit = async (id) => {
     if (!window.confirm('Delete this unit?')) return;
     try {
-      await fetch(`/api/chiller/delete-cold-room?id=${id}`, { method: 'DELETE' });
+      await fetch(API_BASE + `/api/chiller/delete-cold-room?id=${id}`, { method: 'DELETE' });
       setExistingColdRoomUnits(existingColdRoomUnits.filter(u => u.id !== id));
       alert('Unit deleted successfully!');
       window.dispatchEvent(new Event('unit-form-updated'));
@@ -805,7 +814,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     const fetchHostelData = async () => {
       if (unitName === 'Hostels') {
         try {
-          const res = await fetch('/api/hostels');
+          const res = await fetch(API_BASE + '/api/hostels');
           if (res.ok) {
             const data = await res.json();
             if (data.blocks) {
@@ -825,7 +834,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     const fetchMessData = async () => {
       if (unitName === 'Mess') {
         try {
-          const res = await fetch('/api/mess/data');
+          const res = await fetch(API_BASE + '/api/mess/data');
           if (res.ok) {
             const data = await res.json();
             if (data.equipment) setExistingMessEquipments(data.equipment);
@@ -901,13 +910,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         .map(f => ({ ...f, floorNumber: parseInt(f.floorNumber) || 0, totalRooms: parseInt(f.totalRooms) || 0, totalBeds: parseInt(f.totalBeds) || 0, roomTypes: f.roomTypes || 'Single Cot' }));
 
       const staffSum = (parseInt(currentBlockData.chiefWardenCount) || 0) +
-                       (parseInt(currentBlockData.deputyWardenCount) || 0) +
-                       (parseInt(currentBlockData.seniorCaretakerCount) || 0) +
-                       (parseInt(currentBlockData.caretakerCount) || 0) +
-                       (parseInt(currentBlockData.careTakerAttenderCount) || 0) +
-                       (parseInt(currentBlockData.houseKeeperCount) || 0) +
-                       (parseInt(currentBlockData.bathroomCleanerCount) || 0) +
-                       (parseInt(currentBlockData.securityCount) || 0);
+        (parseInt(currentBlockData.deputyWardenCount) || 0) +
+        (parseInt(currentBlockData.seniorCaretakerCount) || 0) +
+        (parseInt(currentBlockData.caretakerCount) || 0) +
+        (parseInt(currentBlockData.careTakerAttenderCount) || 0) +
+        (parseInt(currentBlockData.houseKeeperCount) || 0) +
+        (parseInt(currentBlockData.bathroomCleanerCount) || 0) +
+        (parseInt(currentBlockData.securityCount) || 0);
 
       // Support staff like cleaners and security do not occupy beds
       const nonResidentRoles = ['bathroom cleaner', 'house keeper', 'security personnel'];
@@ -1006,7 +1015,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       try {
         console.log('[SAVE] occupied:', cleanedBlockData.occupied, 'beds:', cleanedBlockData.beds);
 
-        const res = await fetch('/api/hostels/update-block', {
+        const res = await fetch(API_BASE + '/api/hostels/update-block', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(cleanedBlockData)
@@ -1022,13 +1031,13 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         try {
           const freshBlocks = await res.json();
           if (Array.isArray(freshBlocks)) setHostelBlocks(freshBlocks);
-        } catch(e) { /* ignore */ }
+        } catch (e) { /* ignore */ }
 
         // Save water/electricity usage if provided
         const waterVal = parseFloat(values.water);
         const powerVal = parseFloat(values.electricity);
         if (!isNaN(waterVal) || !isNaN(powerVal)) {
-          await fetch('/api/hostels/update', {
+          await fetch(API_BASE + '/api/hostels/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ block: selectedHostelBlock, values: values })
@@ -1093,7 +1102,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         return;
       }
 
-      const response = await fetch('/api/mess/log-waste', {
+      const response = await fetch(API_BASE + '/api/mess/log-waste', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -1124,7 +1133,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       formData.append('monthYear', messMenuMonth);
       formData.append('menuPdf', messMenuFile);
 
-      const res = await fetch('/api/mess/menu-pdf', {
+      const res = await fetch(API_BASE + '/api/mess/menu-pdf', {
         method: 'POST', body: formData
       });
       if (res.ok) {
@@ -1134,8 +1143,8 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
       } else {
         alert('Failed to save menu: ' + await res.text());
       }
-    } catch(e) { 
-      alert('Error: ' + e.message); 
+    } catch (e) {
+      alert('Error: ' + e.message);
     } finally {
       setMessMenuSaving(false);
     }
@@ -1145,79 +1154,79 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     try {
       const valid = messStaffs.filter(s => s.name || s.role);
       if (valid.length === 0) { alert('Please enter at least one valid staff to save.'); return; }
-      
-      const res = await fetch('/api/mess/staff', {
+
+      const res = await fetch(API_BASE + '/api/mess/staff', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valid)
       });
-      if (res.ok) { 
-        alert('Staff saved!'); 
+      if (res.ok) {
+        alert('Staff saved!');
         setMessStaffs([{ blockName: 'Boys Hostel', name: '', role: '', shift: 'Morning', contact: '' }]);
-        fetch('/api/mess/data').then(r => r.json()).then(d => setExistingMessStaffs(d.staff || []));
+        fetch(API_BASE + '/api/mess/data').then(r => r.json()).then(d => setExistingMessStaffs(d.staff || []));
         window.dispatchEvent(new Event('unit-form-updated'));
       }
       else alert('Failed to save staff: ' + await res.text());
-    } catch(e) { alert('Error: ' + e.message); }
+    } catch (e) { alert('Error: ' + e.message); }
   };
 
   const handleUpdateMessStaff = async (staff) => {
     try {
-      await fetch('/api/mess/update-staff', {
+      await fetch(API_BASE + '/api/mess/update-staff', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(staff)
       });
       alert('Staff updated successfully!');
       window.dispatchEvent(new Event('unit-form-updated'));
-    } catch(e) { alert('Failed to update staff'); }
+    } catch (e) { alert('Failed to update staff'); }
   };
 
   const handleDeleteMessStaff = async (id) => {
     try {
-      await fetch(`/api/mess/delete-staff?id=${id}`, { method: 'DELETE' });
-      fetch('/api/mess/data').then(r => r.json()).then(d => setExistingMessStaffs(d.staff || []));
+      await fetch(API_BASE + `/api/mess/delete-staff?id=${id}`, { method: 'DELETE' });
+      fetch(API_BASE + '/api/mess/data').then(r => r.json()).then(d => setExistingMessStaffs(d.staff || []));
       window.dispatchEvent(new Event('unit-form-updated'));
-    } catch(e) { console.error(e); }
+    } catch (e) { console.error(e); }
   };
 
   const submitMessEquip = async () => {
     try {
       const valid = messEquipments.filter(e => e.name);
       if (valid.length === 0) { alert('Please enter at least one valid equipment to save.'); return; }
-      
+
       const payload = valid.map(e => ({
-        ...e, total: parseInt(e.total)||0, working: parseInt(e.working)||0, damaged: parseInt(e.damaged)||0
+        ...e, total: parseInt(e.total) || 0, working: parseInt(e.working) || 0, damaged: parseInt(e.damaged) || 0
       }));
 
-      const res = await fetch('/api/mess/equipment', {
+      const res = await fetch(API_BASE + '/api/mess/equipment', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
-      if (res.ok) { 
-        alert('Equipment saved!'); 
+      if (res.ok) {
+        alert('Equipment saved!');
         setMessEquipments([{ blockName: 'Boys Hostel', name: '', total: 0, working: 0, damaged: 0, status: 'Working' }]);
-        fetch('/api/mess/data').then(r => r.json()).then(d => setExistingMessEquipments(d.equipment || []));
+        fetch(API_BASE + '/api/mess/data').then(r => r.json()).then(d => setExistingMessEquipments(d.equipment || []));
         window.dispatchEvent(new Event('unit-form-updated'));
       }
       else alert('Failed to save equipment: ' + await res.text());
-    } catch(e) { alert('Error: ' + e.message); }
+    } catch (e) { alert('Error: ' + e.message); }
   };
 
   const handleUpdateMessEquipment = async (equipment) => {
     try {
       const payload = {
-        ...equipment, total: parseInt(equipment.total)||0, working: parseInt(equipment.working)||0, damaged: parseInt(equipment.damaged)||0
+        ...equipment, total: parseInt(equipment.total) || 0, working: parseInt(equipment.working) || 0, damaged: parseInt(equipment.damaged) || 0
       };
-      await fetch('/api/mess/update-equipment', {
+      await fetch(API_BASE + '/api/mess/update-equipment', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
       });
       alert('Equipment updated successfully!');
       window.dispatchEvent(new Event('unit-form-updated'));
-    } catch(e) { alert('Failed to update equipment'); }
+    } catch (e) { alert('Failed to update equipment'); }
   };
 
   const handleDeleteMessEquipment = async (id) => {
     try {
-      await fetch(`/api/mess/delete-equipment?id=${id}`, { method: 'DELETE' });
-      fetch('/api/mess/data').then(r => r.json()).then(d => setExistingMessEquipments(d.equipment || []));
+      await fetch(API_BASE + `/api/mess/delete-equipment?id=${id}`, { method: 'DELETE' });
+      fetch(API_BASE + '/api/mess/data').then(r => r.json()).then(d => setExistingMessEquipments(d.equipment || []));
       window.dispatchEvent(new Event('unit-form-updated'));
-    } catch(e) { console.error(e); }
+    } catch (e) { console.error(e); }
   };
 
 
@@ -1292,7 +1301,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         const wsname = workbook.SheetNames[0];
         const ws = workbook.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
-        
+
         const newRows = data.map(row => {
           const newObj = {};
           Object.keys(schema).forEach(key => {
@@ -1301,7 +1310,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
           });
           return newObj;
         });
-        
+
         if (newRows.length > 0) {
           setState(prev => [...(prev || []), ...newRows]);
         }
@@ -1326,7 +1335,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         const wsname = workbook.SheetNames[0];
         const ws = workbook.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
-        
+
         const newWardens = [];
         for (let i = 0; i < data.length; i++) {
           const row = data[i];
@@ -1334,23 +1343,23 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
 
           const strRow = row.map(c => String(c || '').trim());
           const strRowUpper = strRow.map(c => c.toUpperCase());
-          
+
           if (i === 0 && (strRowUpper.includes('BLOCK') || strRowUpper.includes('NAME'))) continue;
 
           const blockIndex = strRowUpper.indexOf(String(selectedHostelBlock).toUpperCase());
           if (blockIndex !== -1) {
             const otherCols = strRow.filter((_, idx) => idx !== blockIndex);
-            
+
             let name = '';
             let phone = '';
             let role = 'Chief Warden';
             let floor = 'ALL FLOORS';
-            
+
             let nameFound = false;
             for (let c of otherCols) {
               if (!c) continue;
               const cUpper = c.toUpperCase();
-              
+
               if (/^\d{8,15}$/.test(c.replace(/\D/g, ''))) {
                 phone = c;
               } else if (cUpper.includes('WARDEN') || cUpper.includes('CARE') || cUpper.includes('CLEANER') || cUpper.includes('KEEPER') || cUpper.includes('SECURITY')) {
@@ -1362,16 +1371,16 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                 nameFound = true;
               }
             }
-            
+
             if (!phone) {
               phone = `99${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`;
             }
             if (!name) name = "Unknown Staff";
-            
+
             newWardens.push({ name, phone, role, floor });
           }
         }
-        
+
         if (newWardens.length > 0) {
           setCurrentBlockData(prev => ({
             ...prev,
@@ -1443,10 +1452,10 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         const wsname = workbook.SheetNames[0];
         const ws = workbook.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false });
-        
+
         let headerRow = [];
         let startIndex = 0;
-        
+
         for (let i = 0; i < Math.min(10, data.length); i++) {
           const rowStr = data[i].join(' ').toLowerCase();
           if (rowStr.includes('hostel') && rowStr.includes('name') && rowStr.includes('roll')) {
@@ -1455,7 +1464,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             break;
           }
         }
-        
+
         if (headerRow.length === 0) {
           alert('Could not detect header row. Please ensure columns like DATE, ROLL NO, NAME, HOSTEL exist.');
           return;
@@ -1474,7 +1483,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
 
         const today = new Date();
         const defaultDateStr = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
-        
+
         const targetDateInput = window.prompt("Extract absent students for which date? (Must match format in Excel)", defaultDateStr);
         if (!targetDateInput) return;
 
@@ -1485,7 +1494,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             formattedDate = `${parts[0].padStart(2, '0')} ${months[parseInt(parts[1], 10) - 1]}`;
           }
-        } catch(e) {}
+        } catch (e) { }
 
         const newAbsents = [];
         const currentHostelName = (currentBlockData.name || '').toLowerCase().trim();
@@ -1495,32 +1504,32 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         for (let i = startIndex; i < data.length; i++) {
           const row = data[i];
           if (!row || !row[dateIdx]) continue;
-          
+
           const rowDateStr = String(row[dateIdx]).trim();
           const rowHostelStr = String(row[hostelIdx] || '').toLowerCase().trim();
 
           const isMatchingDate = rowDateStr === targetDateInput.trim();
-          const isMatchingHostel = rowHostelStr === currentHostelName || 
-                                   currentHostelName.includes(rowHostelStr) || 
-                                   rowHostelStr.includes(currentHostelName);
+          const isMatchingHostel = rowHostelStr === currentHostelName ||
+            currentHostelName.includes(rowHostelStr) ||
+            rowHostelStr.includes(currentHostelName);
 
           if (isMatchingDate && isMatchingHostel) {
-             const rollStr = String(row[rollIdx] || '').trim().toUpperCase();
-             const isValidResident = currentResidents.some(r => String(r.rollNo || '').trim().toUpperCase() === rollStr);
-             
-             if (isValidResident) {
-                newAbsents.push({
-                   name: String(row[nameIdx] || '').trim(),
-                   rollNo: String(row[rollIdx] || '').trim(),
-                   roomNo: roomIdx !== -1 ? String(row[roomIdx] || '').trim() : '',
-                   date: formattedDate
-                });
-             } else {
-                invalidCount++;
-             }
+            const rollStr = String(row[rollIdx] || '').trim().toUpperCase();
+            const isValidResident = currentResidents.some(r => String(r.rollNo || '').trim().toUpperCase() === rollStr);
+
+            if (isValidResident) {
+              newAbsents.push({
+                name: String(row[nameIdx] || '').trim(),
+                rollNo: String(row[rollIdx] || '').trim(),
+                roomNo: roomIdx !== -1 ? String(row[roomIdx] || '').trim() : '',
+                date: formattedDate
+              });
+            } else {
+              invalidCount++;
+            }
           }
         }
-        
+
         if (newAbsents.length > 0) {
           setCurrentBlockData(prev => ({
             ...prev,
@@ -1558,7 +1567,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         const workbook = XLSX.read(bstr, { type: 'binary' });
         const wsname = workbook.SheetNames[0];
         const ws = workbook.Sheets[wsname];
-        
+
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
         let headerRowIndex = -1;
         for (let i = 0; i < Math.min(rows.length, 10); i++) {
@@ -1568,7 +1577,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             break;
           }
         }
-        
+
         let dataToProcess = [];
         if (headerRowIndex !== -1) {
           dataToProcess = XLSX.utils.sheet_to_json(ws, { range: headerRowIndex });
@@ -1582,8 +1591,8 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         // Determine if there is a block column
         let hasBlockColumn = false;
         if (dataToProcess.length > 0) {
-           const firstRowKeys = Object.keys(dataToProcess[0]).map(k => String(k).toLowerCase().replace(/[^a-z0-9]/g, ''));
-           hasBlockColumn = firstRowKeys.some(k => k.includes('block') || k.includes('hostel') || k.includes('building'));
+          const firstRowKeys = Object.keys(dataToProcess[0]).map(k => String(k).toLowerCase().replace(/[^a-z0-9]/g, ''));
+          hasBlockColumn = firstRowKeys.some(k => k.includes('block') || k.includes('hostel') || k.includes('building'));
         }
 
         if (!hasBlockColumn) {
@@ -1603,16 +1612,16 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
           if (hasBlockColumn) {
             const blockKey = Object.keys(normalizedRow).find(k => k.includes('block') || k.includes('hostel') || k.includes('building'));
             const blockVal = String(normalizedRow[blockKey] || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-            
+
             if (blockVal !== '') {
-               const tClean = targetBlock.replace('block', '');
-               const bClean = blockVal.replace('block', '');
-               
-               if (tClean !== bClean && !tClean.includes(bClean) && !bClean.includes(tClean)) {
-                 return; // Skip this student, wrong block
-               }
+              const tClean = targetBlock.replace('block', '');
+              const bClean = blockVal.replace('block', '');
+
+              if (tClean !== bClean && !tClean.includes(bClean) && !bClean.includes(tClean)) {
+                return; // Skip this student, wrong block
+              }
             } else {
-               return; // Skip if block value is empty
+              return; // Skip if block value is empty
             }
           }
 
@@ -1637,7 +1646,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             }
           }
         });
-        
+
         if (newResidents.length > 0) {
           setCurrentBlockData(prev => ({
             ...prev,
@@ -1791,8 +1800,10 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
     );
 
     const calcCell = (val) => (
-      <td style={{ textAlign: 'center', fontWeight: 700, color: '#1d4ed8', fontSize: '0.95rem',
-                   background: '#eff6ff', padding: '8px 6px', border: '1px solid #bfdbfe' }}>
+      <td style={{
+        textAlign: 'center', fontWeight: 700, color: '#1d4ed8', fontSize: '0.95rem',
+        background: '#eff6ff', padding: '8px 6px', border: '1px solid #bfdbfe'
+      }}>
         {val % 1 === 0 ? val : val.toFixed(1)}
       </td>
     );
@@ -1836,27 +1847,27 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
             { id: 'coldroom', label: '🧊 COLD Room' },
             { id: 'breakdowns', label: '🔧 Breakdowns' }
           ].map(tab => (
-            <button 
+            <button
               key={tab.id}
               onClick={() => setChillerTab(tab.id)}
-              style={{ 
-                padding: '10px 18px', 
-                borderRadius: '8px', 
-                border: 'none', 
-                background: chillerTab === tab.id ? '#fff' : 'transparent', 
-                color: chillerTab === tab.id ? '#2563eb' : '#64748b', 
-                fontWeight: 800, 
-                fontSize: '0.9rem', 
-                cursor: 'pointer', 
-                transition: 'all 0.2s', 
-                boxShadow: chillerTab === tab.id ? '0 4px 6px -1px rgba(0,0,0,0.1)' : 'none' 
+              style={{
+                padding: '10px 18px',
+                borderRadius: '8px',
+                border: 'none',
+                background: chillerTab === tab.id ? '#fff' : 'transparent',
+                color: chillerTab === tab.id ? '#2563eb' : '#64748b',
+                fontWeight: 800,
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                boxShadow: chillerTab === tab.id ? '0 4px 6px -1px rgba(0,0,0,0.1)' : 'none'
               }}>
               {tab.label}
             </button>
           ))}
         </div>
 
-        
+
         {chillerTab === 'ahu' && (
           <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
@@ -1924,51 +1935,51 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
                   {existingAhuUnits.map((u, i) => (
-                  <div key={u.id || i} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
-                      <FieldBox label="Block">
-                        <input type="text" value={u.block || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].block = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Floor">
-                        <input type="text" value={u.floor || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].floor = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Location">
-                        <input type="text" value={u.loc || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].loc = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Type">
-                        <input type="text" value={u.type || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].type = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Capacity">
-                        <input type="number" value={u.cap || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].cap = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Qty">
-                        <input type="number" value={u.qty || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].qty = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Total Cap">
-                        <input type="number" value={u.totCap || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].totCap = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="HP">
-                        <input type="number" value={u.hp || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].hp = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Total HP">
-                        <input type="number" value={u.totHp || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].totHp = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Area">
-                        <input type="number" value={u.area || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].area = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
+                    <div key={u.id || i} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                        <FieldBox label="Block">
+                          <input type="text" value={u.block || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].block = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Floor">
+                          <input type="text" value={u.floor || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].floor = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Location">
+                          <input type="text" value={u.loc || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].loc = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Type">
+                          <input type="text" value={u.type || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].type = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Capacity">
+                          <input type="number" value={u.cap || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].cap = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Qty">
+                          <input type="number" value={u.qty || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].qty = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Total Cap">
+                          <input type="number" value={u.totCap || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].totCap = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="HP">
+                          <input type="number" value={u.hp || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].hp = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Total HP">
+                          <input type="number" value={u.totHp || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].totHp = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Area">
+                          <input type="number" value={u.area || ''} onChange={e => { const n = [...existingAhuUnits]; n[i].area = e.target.value; setExistingAhuUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+                        <button onClick={() => handleUpdateExistingAhuUnit(u)} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
+                        <button onClick={() => handleDeleteExistingAhuUnit(u.id)} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove</button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
-                      <button onClick={() => handleUpdateExistingAhuUnit(u)} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
-                      <button onClick={() => handleDeleteExistingAhuUnit(u.id)} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove</button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
             )}
           </div>
         )}
-            
+
         {chillerTab === 'split' && (
           <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
@@ -2030,39 +2041,39 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
                   {existingSplitAcUnits.map((u, i) => (
-                  <div key={u.id || i} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
-                      <FieldBox label="Make">
-                        <input type="text" value={u.make || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].make = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Ton">
-                        <input type="number" value={u.ton || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].ton = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Model">
-                        <input type="text" value={u.model || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].model = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Block">
-                        <input type="text" value={u.block || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].block = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Dept">
-                        <input type="text" value={u.dept || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].dept = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Qty">
-                        <input type="number" value={u.qty || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].qty = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Total Ton">
-                        <input type="number" value={u.totTon || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].totTon = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Location">
-                        <input type="text" value={u.loc || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].loc = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
+                    <div key={u.id || i} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                        <FieldBox label="Make">
+                          <input type="text" value={u.make || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].make = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Ton">
+                          <input type="number" value={u.ton || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].ton = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Model">
+                          <input type="text" value={u.model || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].model = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Block">
+                          <input type="text" value={u.block || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].block = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Dept">
+                          <input type="text" value={u.dept || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].dept = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Qty">
+                          <input type="number" value={u.qty || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].qty = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Total Ton">
+                          <input type="number" value={u.totTon || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].totTon = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Location">
+                          <input type="text" value={u.loc || ''} onChange={e => { const n = [...existingSplitAcUnits]; n[i].loc = e.target.value; setExistingSplitAcUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+                        <button onClick={() => handleUpdateExistingSplitAcUnit(u)} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
+                        <button onClick={() => handleDeleteExistingSplitAcUnit(u.id)} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove</button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
-                      <button onClick={() => handleUpdateExistingSplitAcUnit(u)} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
-                      <button onClick={() => handleDeleteExistingSplitAcUnit(u.id)} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove</button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
                 </div>
               </div>
             )}
@@ -2130,48 +2141,48 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
                   {existingVrvUnits.map((u, i) => (
-                  <div key={u.id || i} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
-                      <FieldBox label="Make">
-                        <input type="text" value={u.make || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].make = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Ton">
-                        <input type="number" value={u.ton || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].ton = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Model">
-                        <input type="text" value={u.model || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].model = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Block">
-                        <input type="text" value={u.block || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].block = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Dept">
-                        <input type="text" value={u.dept || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].dept = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Qty">
-                        <input type="number" value={u.qty || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].qty = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Total Ton">
-                        <input type="number" value={u.totTon || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].totTon = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Location">
-                        <input type="text" value={u.loc || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].loc = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Notes">
-                        <input type="text" value={u.notes || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].notes = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
+                    <div key={u.id || i} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                        <FieldBox label="Make">
+                          <input type="text" value={u.make || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].make = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Ton">
+                          <input type="number" value={u.ton || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].ton = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Model">
+                          <input type="text" value={u.model || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].model = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Block">
+                          <input type="text" value={u.block || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].block = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Dept">
+                          <input type="text" value={u.dept || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].dept = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Qty">
+                          <input type="number" value={u.qty || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].qty = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Total Ton">
+                          <input type="number" value={u.totTon || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].totTon = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Location">
+                          <input type="text" value={u.loc || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].loc = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Notes">
+                          <input type="text" value={u.notes || ''} onChange={e => { const n = [...existingVrvUnits]; n[i].notes = e.target.value; setExistingVrvUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+                        <button onClick={() => handleUpdateExistingVrvUnit(u)} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
+                        <button onClick={() => handleDeleteExistingVrvUnit(u.id)} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove</button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
-                      <button onClick={() => handleUpdateExistingVrvUnit(u)} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
-                      <button onClick={() => handleDeleteExistingVrvUnit(u.id)} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove</button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
                 </div>
               </div>
             )}
           </div>
         )}
-            
+
         {chillerTab === 'coldroom' && (
           <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
@@ -2232,45 +2243,45 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowX: 'auto', maxHeight: '500px', overflowY: 'auto' }}>
                   {existingColdRoomUnits.map((u, i) => (
-                  <div key={u.id || i} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
-                      <FieldBox label="Make">
-                        <input type="text" value={u.make || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].make = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Ton">
-                        <input type="number" value={u.ton || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].ton = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Model">
-                        <input type="text" value={u.model || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].model = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Block">
-                        <input type="text" value={u.block || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].block = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Dept">
-                        <input type="text" value={u.dept || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].dept = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Qty">
-                        <input type="number" value={u.qty || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].qty = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Total Ton">
-                        <input type="number" value={u.totTon || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].totTon = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
-                      <FieldBox label="Location">
-                        <input type="text" value={u.loc || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].loc = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
-                      </FieldBox>
+                    <div key={u.id || i} style={{ background: '#ffffff', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', marginBottom: '12px' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+                        <FieldBox label="Make">
+                          <input type="text" value={u.make || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].make = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Ton">
+                          <input type="number" value={u.ton || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].ton = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Model">
+                          <input type="text" value={u.model || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].model = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Block">
+                          <input type="text" value={u.block || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].block = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Dept">
+                          <input type="text" value={u.dept || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].dept = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Qty">
+                          <input type="number" value={u.qty || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].qty = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Total Ton">
+                          <input type="number" value={u.totTon || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].totTon = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                        <FieldBox label="Location">
+                          <input type="text" value={u.loc || ''} onChange={e => { const n = [...existingColdRoomUnits]; n[i].loc = e.target.value; setExistingColdRoomUnits(n); }} style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f1f5f9', fontSize: '0.9rem', color: '#475569', fontWeight: 600, outline: 'none' }} />
+                        </FieldBox>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
+                        <button onClick={() => handleUpdateExistingColdRoomUnit(u)} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
+                        <button onClick={() => handleDeleteExistingColdRoomUnit(u.id)} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove</button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
-                      <button onClick={() => handleUpdateExistingColdRoomUnit(u)} style={{ padding: '10px 14px', background: '#eff6ff', color: '#3b82f6', border: '1px solid #bfdbfe', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>💾 Update</button>
-                      <button onClick={() => handleDeleteExistingColdRoomUnit(u.id)} style={{ padding: '10px 14px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>✖ Remove</button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
                 </div>
               </div>
             )}
           </div>
         )}
-        
+
         {chillerTab === 'breakdowns' && (
           <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
@@ -2359,9 +2370,9 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         )}
 
 
-{chillerTab === 'static' && (
+        {chillerTab === 'static' && (
           <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '24px' }}>
-            
+
             {/* Products List (Plant Specs) */}
             <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
@@ -2663,70 +2674,72 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
               </div>
             </div>
 
-        {/* ─── NEW UI: Chiller Units & Pumps Cards ──────────────────────── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', marginBottom: '28px' }}>
-          
-          {[
-            { title: 'Chiller 1 (Daikin)', subtitle: '185 KW', state: u1, set: setU1, color: '#2563eb', bg: '#eff6ff' },
-            { title: 'Chiller 2 (Daikin)', subtitle: '185 KW', state: u2, set: setU2, color: '#2563eb', bg: '#eff6ff' },
-            { title: 'Chiller 3 (Dunham-Bush)', subtitle: '240 kW', state: u3, set: setU3, color: '#7c3aed', bg: '#f5f3ff' },
-            { title: 'Condenser Pump', subtitle: '74 kW', state: p1, set: setP1, color: '#0ea5e9', bg: '#f0f9ff' },
-            { title: 'Chilled Water Pump', subtitle: '88 kW', state: p2, set: setP2, color: '#0284c7', bg: '#e0f2fe' },
-            { title: 'Cooling Tower Motor', subtitle: '22 kW', state: p3, set: setP3, color: '#4f46e5', bg: '#eef2ff' },
-          ].map((eq, idx) => (
-            <div key={idx} style={{ background: '#fff', border: `2px solid ${eq.color}40`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-              <div style={{ background: eq.bg, padding: '16px', borderBottom: `1px solid ${eq.color}40` }}>
-                <h3 style={{ margin: 0, fontSize: '1.2rem', color: eq.color, fontWeight: 800 }}>{eq.title}</h3>
-                <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 700 }}>{eq.subtitle}</span>
-              </div>
-              <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
-                {SLOTS.map(s => (
-                  <div key={s.key} style={{ display: 'flex', flexDirection: 'column', background: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
-                      <div>
-                        <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b' }}>{s.label}</div>
-                        <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>{s.hours}</div>
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: '#64748b', background: '#e2e8f0', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Max {s.max}h</div>
-                    </div>
-                    <div>
-                      {slotInput(eq.state, eq.set, s.key, s.max)}
-                    </div>
+            {/* ─── NEW UI: Chiller Units & Pumps Cards ──────────────────────── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px', marginBottom: '28px' }}>
+
+              {[
+                { title: 'Chiller 1 (Daikin)', subtitle: '185 KW', state: u1, set: setU1, color: '#2563eb', bg: '#eff6ff' },
+                { title: 'Chiller 2 (Daikin)', subtitle: '185 KW', state: u2, set: setU2, color: '#2563eb', bg: '#eff6ff' },
+                { title: 'Chiller 3 (Dunham-Bush)', subtitle: '240 kW', state: u3, set: setU3, color: '#7c3aed', bg: '#f5f3ff' },
+                { title: 'Condenser Pump', subtitle: '74 kW', state: p1, set: setP1, color: '#0ea5e9', bg: '#f0f9ff' },
+                { title: 'Chilled Water Pump', subtitle: '88 kW', state: p2, set: setP2, color: '#0284c7', bg: '#e0f2fe' },
+                { title: 'Cooling Tower Motor', subtitle: '22 kW', state: p3, set: setP3, color: '#4f46e5', bg: '#eef2ff' },
+              ].map((eq, idx) => (
+                <div key={idx} style={{ background: '#fff', border: `2px solid ${eq.color}40`, borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+                  <div style={{ background: eq.bg, padding: '16px', borderBottom: `1px solid ${eq.color}40` }}>
+                    <h3 style={{ margin: 0, fontSize: '1.2rem', color: eq.color, fontWeight: 800 }}>{eq.title}</h3>
+                    <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: 700 }}>{eq.subtitle}</span>
                   </div>
-                ))}
-              </div>
-            </div>
-          ))}
+                  <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+                    {SLOTS.map(s => (
+                      <div key={s.key} style={{ display: 'flex', flexDirection: 'column', background: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                        <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                          <div>
+                            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1e293b' }}>{s.label}</div>
+                            <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>{s.hours}</div>
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: '#64748b', background: '#e2e8f0', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>Max {s.max}h</div>
+                        </div>
+                        <div>
+                          {slotInput(eq.state, eq.set, s.key, s.max)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
 
-        </div>
-
-        {/* Auto-totals summary strip */}
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
-          {[
-            { label: 'Chiller Peak Hrs',    val: cPeak,    color: '#ef4444' },
-            { label: 'Chiller Non-Peak Hrs', val: cNonPeak, color: '#22c55e' },
-            { label: 'Chiller Night Hrs',   val: cNight,   color: '#1d4ed8' },
-            { label: 'Pump Peak Hrs',       val: pPeak,    color: '#ef4444' },
-            { label: 'Pump Non-Peak Hrs',   val: pNonPeak, color: '#22c55e' },
-            { label: 'Pump Night Hrs',      val: pNight,   color: '#1d4ed8' },
-          ].map(item => (
-            <div key={item.label} style={{ flex: '1 1 140px', background: '#f8fafc', border: `1px solid ${item.color}33`, borderRadius: '10px', padding: '10px 14px', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>{item.label}</div>
-              <div style={{ fontSize: '1.3rem', fontWeight: 800, color: item.color }}>
-                {item.val % 1 === 0 ? item.val : item.val.toFixed(1)}
-              </div>
             </div>
-          ))}
-        </div>
-        </div>
+
+            {/* Auto-totals summary strip */}
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
+              {[
+                { label: 'Chiller Peak Hrs', val: cPeak, color: '#ef4444' },
+                { label: 'Chiller Non-Peak Hrs', val: cNonPeak, color: '#22c55e' },
+                { label: 'Chiller Night Hrs', val: cNight, color: '#1d4ed8' },
+                { label: 'Pump Peak Hrs', val: pPeak, color: '#ef4444' },
+                { label: 'Pump Non-Peak Hrs', val: pNonPeak, color: '#22c55e' },
+                { label: 'Pump Night Hrs', val: pNight, color: '#1d4ed8' },
+              ].map(item => (
+                <div key={item.label} style={{ flex: '1 1 140px', background: '#f8fafc', border: `1px solid ${item.color}33`, borderRadius: '10px', padding: '10px 14px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, marginBottom: '4px' }}>{item.label}</div>
+                  <div style={{ fontSize: '1.3rem', fontWeight: 800, color: item.color }}>
+                    {item.val % 1 === 0 ? item.val : item.val.toFixed(1)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* Save / Cancel */}
         {chillerSavedMsg && (
-          <div style={{ padding: '10px 16px', borderRadius: '8px', marginBottom: '12px', fontWeight: 700, fontSize: '0.85rem',
+          <div style={{
+            padding: '10px 16px', borderRadius: '8px', marginBottom: '12px', fontWeight: 700, fontSize: '0.85rem',
             background: chillerSavedMsg.startsWith('✓') ? '#f0fdf4' : '#fef2f2',
-            color:      chillerSavedMsg.startsWith('✓') ? '#15803d' : '#dc2626',
-            border:     `1px solid ${chillerSavedMsg.startsWith('✓') ? '#bbf7d0' : '#fecaca'}` }}>
+            color: chillerSavedMsg.startsWith('✓') ? '#15803d' : '#dc2626',
+            border: `1px solid ${chillerSavedMsg.startsWith('✓') ? '#bbf7d0' : '#fecaca'}`
+          }}>
             {chillerSavedMsg}
           </div>
         )}
@@ -2768,7 +2781,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
         </div>
 
         <div style={{ padding: '24px', maxHeight: '60vh', overflowY: 'auto' }}>
-          
+
           {messTab === 'daily' && (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
@@ -2795,7 +2808,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                       <input type="number" min="0" value={v.breakfast || ''} onChange={e => onChange('breakfast', e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #ccc' }} placeholder="e.g. 15" />
                     </label>
                   )}
-                  
+
                   <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     Lunch Waste (KG)
                     <input type="number" min="0" value={v.lunch || ''} onChange={e => onChange('lunch', e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #ccc' }} placeholder="e.g. 25" />
@@ -2809,7 +2822,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                   )}
                 </div>
               </div>
-              
+
               <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '20px' }}>
                 <h4 style={{ margin: '0 0 16px 0', color: '#1e293b' }}>Food Taken Count (People)</h4>
                 <div style={{ display: 'flex', gap: '16px' }}>
@@ -2819,7 +2832,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                       <input type="number" min="0" value={v.breakfastCount || ''} onChange={e => onChange('breakfastCount', e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #ccc' }} placeholder="e.g. 350" />
                     </label>
                   )}
-                  
+
                   <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     Lunch Count
                     <input type="number" min="0" value={v.lunchCount || ''} onChange={e => onChange('lunchCount', e.target.value)} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #ccc' }} placeholder="e.g. 400" />
@@ -2859,17 +2872,17 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                 <input type="file" accept=".pdf" onChange={e => setMessMenuFile(e.target.files[0])} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #ccc', width: '100%', background: '#fff' }} />
               </div>
               <div style={{ marginTop: '20px', textAlign: 'right' }}>
-                <button 
-                  onClick={submitMessMenu} 
+                <button
+                  onClick={submitMessMenu}
                   disabled={messMenuSaving}
-                  style={{ 
-                    padding: '10px 20px', 
-                    background: messMenuSaving ? '#94a3b8' : '#4f46e5', 
-                    color: '#fff', 
-                    border: 'none', 
-                    borderRadius: '8px', 
-                    cursor: messMenuSaving ? 'not-allowed' : 'pointer', 
-                    fontWeight: 'bold' 
+                  style={{
+                    padding: '10px 20px',
+                    background: messMenuSaving ? '#94a3b8' : '#4f46e5',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: messMenuSaving ? 'not-allowed' : 'pointer',
+                    fontWeight: 'bold'
                   }}
                 >
                   {messMenuSaving ? 'Processing PDF (OCR may take up to 20s)...' : 'Submit Monthly Menu'}
@@ -2880,7 +2893,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
 
           {messTab === 'static' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-              
+
               {/* Equipment Inventory */}
               <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
@@ -3182,7 +3195,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                   <div className="form-group-box">
                     <h4 style={{ color: '#3b82f6', margin: '0 0 16px 0' }}>Block Specifications</h4>
-                    
+
                     <label style={{ display: 'block', marginBottom: '12px' }}>Select Hostel Type
                       <select
                         value={currentBlockData.gender || 'boys'}
@@ -3253,7 +3266,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
 
                   <div className="form-group-box">
                     <h4 style={{ color: '#0f172a', margin: '0 0 16px 0' }}>Capacity & Layout</h4>
-                    
+
                     <label style={{ display: 'block', marginBottom: '12px' }}>Enter Number of Floors
                       <input
                         type="number"
@@ -3272,7 +3285,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                       />
                     </label>
 
-                     <label style={{ display: 'block', marginBottom: '12px' }}>Enter Total Beds
+                    <label style={{ display: 'block', marginBottom: '12px' }}>Enter Total Beds
                       <input
                         type="number"
                         value={currentBlockData.beds || 0}
@@ -3594,9 +3607,9 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
                     <h4 style={{ color: '#8b5cf6', margin: 0 }}>Evening Biometric Attendance (Absent Unexcused)</h4>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <input 
-                        type="text" 
-                        placeholder="Search Students..." 
+                      <input
+                        type="text"
+                        placeholder="Search Students..."
                         value={absentSearchQuery}
                         onChange={(e) => setAbsentSearchQuery(e.target.value)}
                         style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
@@ -3634,30 +3647,30 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                             .map((res, idx) => ({ res, idx }))
                             .filter(({ res }) => (res.name || '').toLowerCase().includes(absentSearchQuery.toLowerCase()) || (res.rollNo || '').toLowerCase().includes(absentSearchQuery.toLowerCase()) || (res.roomNo || '').toLowerCase().includes(absentSearchQuery.toLowerCase()))
                             .map(({ res, idx }) => (
-                            <tr key={idx}>
-                              <td><input type="text" value={res.name || ''} onChange={(e) => updateAbsentField(idx, 'name', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter name" /></td>
-                              <td><input type="text" value={res.rollNo || ''} onChange={(e) => updateAbsentField(idx, 'rollNo', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter unique roll no" /></td>
-                              <td><input type="text" value={res.roomNo || ''} onChange={(e) => updateAbsentField(idx, 'roomNo', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter room" /></td>
-                              <td>
-                                <button
-                                  onClick={() => removeAbsentStudent(idx)}
-                                  style={{
-                                    color: '#ef4444',
-                                    border: '1px solid #fee2e2',
-                                    background: '#fef2f2',
-                                    padding: '4px 12px',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer',
-                                    fontSize: '0.8rem',
-                                    fontWeight: '600',
-                                    width: '100%'
-                                  }}
-                                >
-                                  Remove
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
+                              <tr key={idx}>
+                                <td><input type="text" value={res.name || ''} onChange={(e) => updateAbsentField(idx, 'name', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter name" /></td>
+                                <td><input type="text" value={res.rollNo || ''} onChange={(e) => updateAbsentField(idx, 'rollNo', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter unique roll no" /></td>
+                                <td><input type="text" value={res.roomNo || ''} onChange={(e) => updateAbsentField(idx, 'roomNo', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter room" /></td>
+                                <td>
+                                  <button
+                                    onClick={() => removeAbsentStudent(idx)}
+                                    style={{
+                                      color: '#ef4444',
+                                      border: '1px solid #fee2e2',
+                                      background: '#fef2f2',
+                                      padding: '4px 12px',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer',
+                                      fontSize: '0.8rem',
+                                      fontWeight: '600',
+                                      width: '100%'
+                                    }}
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
                         </tbody>
                       </table>
                     </div>
@@ -3704,20 +3717,20 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                       <h4 style={{ margin: '0 0 4px 0' }}>Maintenance Complaints</h4>
                       <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Log infrastructure issues, plumbing, or electrical faults.</p>
                     </div>
-                    <button 
+                    <button
                       onClick={(e) => {
                         e.preventDefault();
                         if (onClose) onClose();
                         window.dispatchEvent(new CustomEvent('open-raise-complaint-modal'));
-                      }} 
-                      style={{ 
-                        padding: '8px 16px', 
-                        fontSize: '0.85rem', 
-                        background: '#fef2f2', 
-                        color: '#dc2626', 
-                        border: '1px solid #fecaca', 
-                        cursor: 'pointer', 
-                        borderRadius: '8px', 
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        fontSize: '0.85rem',
+                        background: '#fef2f2',
+                        color: '#dc2626',
+                        border: '1px solid #fecaca',
+                        cursor: 'pointer',
+                        borderRadius: '8px',
                         fontWeight: '700',
                         display: 'flex',
                         alignItems: 'center',
@@ -3736,9 +3749,9 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
                     <h4>Wardens & Support Staff</h4>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <input 
-                        type="text" 
-                        placeholder="Search Staff..." 
+                      <input
+                        type="text"
+                        placeholder="Search Staff..."
                         value={wardenSearchQuery}
                         onChange={(e) => setWardenSearchQuery(e.target.value)}
                         style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
@@ -3777,51 +3790,51 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                           .map((w, idx) => ({ w, idx }))
                           .filter(({ w }) => (w.name || '').toLowerCase().includes(wardenSearchQuery.toLowerCase()) || (w.phone || '').toLowerCase().includes(wardenSearchQuery.toLowerCase()) || (w.role || '').toLowerCase().includes(wardenSearchQuery.toLowerCase()) || (w.floor || '').toLowerCase().includes(wardenSearchQuery.toLowerCase()))
                           .map(({ w, idx }) => (
-                          <tr key={idx}>
-                            <td><input type="text" value={w.name || ''} onChange={(e) => updateWardenField(idx, 'name', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter name" /></td>
-                            <td><input type="text" value={w.phone || ''} onChange={(e) => updateWardenField(idx, 'phone', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter unique phone" /></td>
-                            <td>
-                              <select value={w.role || 'Chief Warden'} onChange={(e) => updateWardenField(idx, 'role', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
-                                <option value="Chief Warden">Chief Warden</option>
-                                <option value="Deputy Warden">Deputy Warden</option>
-                                <option value="Care Taker /Resident Attenders">Care Taker /Resident Attenders</option>
-                                <option value="House Keeper">House Keeper</option>
-                                <option value="Bathroom cleaner">Bathroom cleaner</option>
-                                <option value="Security Personnel">Security Personnel</option>
-                                <option value="Senior Caretaker">Senior Caretaker</option>
-                              </select>
-                            </td>
-                            <td>
-                              <select value={w.floor || 'ALL FLOORS'} onChange={(e) => updateWardenField(idx, 'floor', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
-                                <option value="GROUND">GROUND</option>
-                                <option value="FIRST">FIRST</option>
-                                <option value="SECOND">SECOND</option>
-                                <option value="THIRD">THIRD</option>
-                                <option value="ALL FLOORS">ALL FLOORS</option>
-                                <option value="0&1">0&1</option>
-                                <option value="2&3">2&3</option>
-                              </select>
-                            </td>
-                            <td>
-                              <button
-                                onClick={() => removeWarden(idx)}
-                                style={{
-                                  color: '#ef4444',
-                                  border: '1px solid #fee2e2',
-                                  background: '#fef2f2',
-                                  padding: '4px 12px',
-                                  borderRadius: '6px',
-                                  cursor: 'pointer',
-                                  fontSize: '0.8rem',
-                                  fontWeight: '600',
-                                  width: '100%'
-                                }}
-                              >
-                                Remove
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                            <tr key={idx}>
+                              <td><input type="text" value={w.name || ''} onChange={(e) => updateWardenField(idx, 'name', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter name" /></td>
+                              <td><input type="text" value={w.phone || ''} onChange={(e) => updateWardenField(idx, 'phone', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter unique phone" /></td>
+                              <td>
+                                <select value={w.role || 'Chief Warden'} onChange={(e) => updateWardenField(idx, 'role', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
+                                  <option value="Chief Warden">Chief Warden</option>
+                                  <option value="Deputy Warden">Deputy Warden</option>
+                                  <option value="Care Taker /Resident Attenders">Care Taker /Resident Attenders</option>
+                                  <option value="House Keeper">House Keeper</option>
+                                  <option value="Bathroom cleaner">Bathroom cleaner</option>
+                                  <option value="Security Personnel">Security Personnel</option>
+                                  <option value="Senior Caretaker">Senior Caretaker</option>
+                                </select>
+                              </td>
+                              <td>
+                                <select value={w.floor || 'ALL FLOORS'} onChange={(e) => updateWardenField(idx, 'floor', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }}>
+                                  <option value="GROUND">GROUND</option>
+                                  <option value="FIRST">FIRST</option>
+                                  <option value="SECOND">SECOND</option>
+                                  <option value="THIRD">THIRD</option>
+                                  <option value="ALL FLOORS">ALL FLOORS</option>
+                                  <option value="0&1">0&1</option>
+                                  <option value="2&3">2&3</option>
+                                </select>
+                              </td>
+                              <td>
+                                <button
+                                  onClick={() => removeWarden(idx)}
+                                  style={{
+                                    color: '#ef4444',
+                                    border: '1px solid #fee2e2',
+                                    background: '#fef2f2',
+                                    padding: '4px 12px',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '600',
+                                    width: '100%'
+                                  }}
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
                       </tbody>
                     </table>
                   )}
@@ -3831,9 +3844,9 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '12px' }}>
                     <h4>Resident Roster</h4>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <input 
-                        type="text" 
-                        placeholder="Search Students..." 
+                      <input
+                        type="text"
+                        placeholder="Search Students..."
                         value={residentSearchQuery}
                         onChange={(e) => setResidentSearchQuery(e.target.value)}
                         style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
@@ -3872,31 +3885,31 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                             .map((res, idx) => ({ res, idx }))
                             .filter(({ res }) => (res.name || '').toLowerCase().includes(residentSearchQuery.toLowerCase()) || (res.rollNo || '').toLowerCase().includes(residentSearchQuery.toLowerCase()) || (res.roomNo || '').toLowerCase().includes(residentSearchQuery.toLowerCase()))
                             .map(({ res, idx }) => (
-                            <tr key={idx}>
-                              <td><input type="text" value={res.name || ''} onChange={(e) => updateResidentField(idx, 'name', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter name" /></td>
-                              <td><input type="text" value={res.rollNo || ''} onChange={(e) => updateResidentField(idx, 'rollNo', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter unique roll no" /></td>
-                              <td><input type="text" value={res.roomNo || ''} onChange={(e) => updateResidentField(idx, 'roomNo', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter room" /></td>
-                              <td><input type="text" value={res.year || ''} onChange={(e) => updateResidentField(idx, 'year', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter year" /></td>
-                              <td>
-                                <button
-                                  onClick={() => removeResident(idx)}
-                                  style={{
-                                    color: '#ef4444',
-                                    border: '1px solid #fee2e2',
-                                    background: '#fef2f2',
-                                    padding: '4px 12px',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer',
-                                    fontSize: '0.8rem',
-                                    fontWeight: '600',
-                                    width: '100%'
-                                  }}
-                                >
-                                  Remove
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
+                              <tr key={idx}>
+                                <td><input type="text" value={res.name || ''} onChange={(e) => updateResidentField(idx, 'name', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter name" /></td>
+                                <td><input type="text" value={res.rollNo || ''} onChange={(e) => updateResidentField(idx, 'rollNo', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter unique roll no" /></td>
+                                <td><input type="text" value={res.roomNo || ''} onChange={(e) => updateResidentField(idx, 'roomNo', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter room" /></td>
+                                <td><input type="text" value={res.year || ''} onChange={(e) => updateResidentField(idx, 'year', e.target.value)} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} placeholder="Enter year" /></td>
+                                <td>
+                                  <button
+                                    onClick={() => removeResident(idx)}
+                                    style={{
+                                      color: '#ef4444',
+                                      border: '1px solid #fee2e2',
+                                      background: '#fef2f2',
+                                      padding: '4px 12px',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer',
+                                      fontSize: '0.8rem',
+                                      fontWeight: '600',
+                                      width: '100%'
+                                    }}
+                                  >
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
                         </tbody>
                       </table>
                     </div>
@@ -3957,7 +3970,7 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
           dgDynamic: dgDynamic,
           dgDailyFuel: parseFloat(dgDailyFuel) || 0
         };
-        const res = await fetch('/api/powerhouse/data', {
+        const res = await fetch(API_BASE + '/api/powerhouse/data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -4285,6 +4298,25 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
 
           const excelMapping = isSolar ? { hour: '', value: '', generation: '' } : { hour: '', value: '' };
 
+          const downloadPhTemplate = () => {
+            let templateData = [];
+            let filename = '';
+            if (isEB) {
+              templateData = ebDynamic.map(s => ({ 'Hour': s.hour, 'Value': '' }));
+              filename = 'EB_Dynamic_Template.xlsx';
+            } else if (isSolar) {
+              templateData = solarDynamic.map(s => ({ 'Hour': s.hour, 'Value': '', 'Generation': '' }));
+              filename = 'Solar_Dynamic_Template.xlsx';
+            } else if (isDG) {
+              templateData = dgDynamic.map(s => ({ 'Hour': s.hour, 'Value': '' }));
+              filename = 'DG_Dynamic_Template.xlsx';
+            }
+            const ws = XLSX.utils.json_to_sheet(templateData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Template");
+            XLSX.writeFile(wb, filename);
+          };
+
           return (
             <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '16px' }}>
@@ -4294,6 +4326,9 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
                     + Upload Excel
                     <input type="file" accept=".xlsx, .xls, .csv" onChange={(e) => handleGenericFileUpload(setter, excelMapping, e)} style={{ display: 'none' }} />
                   </label>
+                  <button onClick={downloadPhTemplate} style={{ padding: '6px 12px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer' }}>
+                    Download Template
+                  </button>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
                   {isDG && (
@@ -4310,12 +4345,12 @@ export default function UnitDataForm({ unitName, fields, onClose }) {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
                 {dataArray.map((slot, idx) => (
-                  <div key={idx} style={{ background: '#fff', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#3b82f6', width: '40px' }}>{slot.hour}</div>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <input type="number" placeholder="Consumption (Units)" style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem', boxSizing: 'border-box' }} value={slot.value || ''} onChange={e => handlePhDynamicChange(setter, idx, 'value', e.target.value)} />
+                  <div key={idx} style={{ background: '#fff', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '12px', gridColumn: (isSolar || isDG) ? '1 / -1' : 'auto' }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#3b82f6', width: isDG ? '140px' : isSolar ? '60px' : '40px' }}>{slot.hour}</div>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: isSolar ? 'row' : 'column', gap: '8px' }}>
+                      <input type="number" placeholder="Consumption (Units)" style={{ flex: 1, padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem', boxSizing: 'border-box' }} value={slot.value || ''} onChange={e => handlePhDynamicChange(setter, idx, 'value', e.target.value)} />
                       {isSolar && (
-                        <input type="number" placeholder="Generation (Units)" style={{ width: '100%', padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem', boxSizing: 'border-box' }} value={slot.generation || ''} onChange={e => handlePhDynamicChange(setter, idx, 'generation', e.target.value)} />
+                        <input type="number" placeholder="Generation (Units)" style={{ flex: 1, padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem', boxSizing: 'border-box' }} value={slot.generation || ''} onChange={e => handlePhDynamicChange(setter, idx, 'generation', e.target.value)} />
                       )}
                     </div>
                   </div>

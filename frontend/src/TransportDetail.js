@@ -1,3 +1,4 @@
+import { API_BASE } from './config';
 import React, { useState, useEffect } from 'react';
 import {
   BarChart,
@@ -28,7 +29,7 @@ export default function TransportDetail({ currentUser }) {
 
   // Fetch all transport data from backend
   const fetchData = () => {
-    fetch('/api/transport')
+    fetch(API_BASE + '/api/transport')
       .then(r => r.json())
       .then(d => setBackendData(d))
       .catch(() => { });
@@ -1492,7 +1493,7 @@ export default function TransportDetail({ currentUser }) {
         payload.actualEndTime = actualEndTime;
       }
 
-      fetch('/api/transport/update-trip-status', {
+      fetch(API_BASE + '/api/transport/update-trip-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

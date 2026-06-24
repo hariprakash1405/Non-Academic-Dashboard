@@ -1,3 +1,4 @@
+import { API_BASE } from './config';
 import React, { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
 
@@ -67,7 +68,7 @@ export default function DevAdminPage() {
           return;
         }
 
-        await fetch('/api/users/bulk', {
+        await fetch(API_BASE + '/api/users/bulk', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(usersToUpload)
@@ -102,7 +103,7 @@ export default function DevAdminPage() {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('/api/users');
+      const res = await fetch(API_BASE + '/api/users');
       const data = await res.json();
       setUsersList(data || []);
     } catch (e) {
@@ -132,7 +133,7 @@ export default function DevAdminPage() {
     }
 
     try {
-      await fetch('/api/users/update', {
+      await fetch(API_BASE + '/api/users/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userToSave)
@@ -147,7 +148,7 @@ export default function DevAdminPage() {
 
   const handleToggleStatus = async (user) => {
     try {
-      await fetch('/api/users/update', {
+      await fetch(API_BASE + '/api/users/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...user, status: !user.status })
@@ -177,7 +178,7 @@ export default function DevAdminPage() {
       
       // Update each matching user's dashboardAccess and accessibleUnits flags
       for (const user of usersToUpdate) {
-        await fetch('/api/users/update', {
+        await fetch(API_BASE + '/api/users/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...user, dashboardAccess, accessibleUnits: accessibleUnitsStr })
@@ -195,7 +196,7 @@ export default function DevAdminPage() {
   const handleDeleteUser = async (id) => {
     if (!window.confirm("Are you sure you want to completely delete this user? This cannot be undone.")) return;
     try {
-      await fetch('/api/users/delete', {
+      await fetch(API_BASE + '/api/users/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id })

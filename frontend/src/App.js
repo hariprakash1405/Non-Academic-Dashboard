@@ -1,3 +1,4 @@
+import { API_BASE } from './config';
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -22,6 +23,7 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import './App.css';
 import PowerHouseDetail from './PowerHouseDetail';
 import ChillerPlantDetail from './ChillerPlantDetail';
@@ -467,7 +469,7 @@ function Dashboard() {
   const [hortiData, setHortiData] = useState(null);
 
   useEffect(() => {
-    fetch('/api/horticulture')
+    fetch(API_BASE + '/api/horticulture')
       .then(res => res.json())
       .then(data => setHortiData(data))
       .catch(() => {});
@@ -828,7 +830,7 @@ function LoginPage({ onLogin }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('/api/login', {
+      const response = await fetch(API_BASE + '/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -840,6 +842,38 @@ function LoginPage({ onLogin }) {
           setError('Account is disabled.');
         } else {
           setError('Server error during login.');
+        }
+        return;
+      }
+      const user = await response.json();
+      setError('');
+      onLogin({
+        id: user.id,
+        name: user.name,
+        role: user.role,
+        unitName: user.unitName,
+        username: user.username,
+        dashboardAccess: user.dashboardAccess
+      });
+    } catch (err) {
+      setError('Failed to connect to the backend server.');
+    }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse) => {
+    try {
+      const response = await fetch(API_BASE + '/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: credentialResponse.credential })
+      });
+      if (!response.ok) {
+        if (response.status === 401) {
+          setError('Google authentication failed. Unauthorized email.');
+        } else if (response.status === 403) {
+          setError('Account is disabled.');
+        } else {
+          setError('Server error during Google login.');
         }
         return;
       }
@@ -896,14 +930,17 @@ function LoginPage({ onLogin }) {
 
         <button type="submit">Login</button>
         <div className="login-or">Or</div>
-        <div className="login-google-card" role="button" tabIndex={0}>
-          <div className="login-google-avatar login-google-avatar--g">G</div>
-          <div className="login-google-user">
-            <div>Continue with Google</div>
-          </div>
-          <div className="login-google-logo">G</div>
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px' }}>
+          <GoogleOAuthProvider clientId="893806898567-037h0vi68gbrs5n1tmidlaphsv6n9mj0.apps.googleusercontent.com">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() => {
+                setError('Google authentication failed.');
+              }}
+              useOneTap
+            />
+          </GoogleOAuthProvider>
         </div>
-
       </form>
     </div>
   );
@@ -1668,7 +1705,7 @@ function App() {
 
   useEffect(() => {
     if (currentUser?.id) {
-      fetch('/api/users')
+      fetch(API_BASE + '/api/users')
         .then(res => res.json())
         .then(data => {
           const me = data.find(u => u.id === currentUser.id);

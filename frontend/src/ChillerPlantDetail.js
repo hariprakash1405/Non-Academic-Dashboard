@@ -1,3 +1,4 @@
+import { API_BASE } from './config';
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   XAxis,
@@ -457,7 +458,7 @@ export default function ChillerPlantDetail() {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/chiller');
+      const res = await fetch(API_BASE + '/api/chiller');
       if (res.ok) {
         const data = await res.json();
         if (data.logs && data.logs.length > 0) setLogs(data.logs);
@@ -476,7 +477,7 @@ export default function ChillerPlantDetail() {
     }
     // Fetch operating logs
     try {
-      const r2 = await fetch('/api/chiller/operating-logs');
+      const r2 = await fetch(API_BASE + '/api/chiller/operating-logs');
       if (r2.ok) {
         const opLogs = await r2.json();
         if (opLogs && opLogs.length > 0) {
@@ -497,7 +498,7 @@ export default function ChillerPlantDetail() {
     }
     // Fetch AHU Units
     try {
-      const r3 = await fetch('/api/chiller/ahu-units');
+      const r3 = await fetch(API_BASE + '/api/chiller/ahu-units');
       if (r3.ok) {
         const units = await r3.json();
         if (units && units.length > 0) {
@@ -509,7 +510,7 @@ export default function ChillerPlantDetail() {
     }
     // Fetch Split AC Units
     try {
-      const r4 = await fetch('/api/chiller/split-ac');
+      const r4 = await fetch(API_BASE + '/api/chiller/split-ac');
       if (r4.ok) {
         const splitUnits = await r4.json();
         if (splitUnits && splitUnits.length > 0) {
@@ -521,7 +522,7 @@ export default function ChillerPlantDetail() {
     }
     // Fetch VRV Units
     try {
-      const r5 = await fetch('/api/chiller/vrv-units');
+      const r5 = await fetch(API_BASE + '/api/chiller/vrv-units');
       if (r5.ok) {
         const vrvUnits = await r5.json();
         if (vrvUnits && vrvUnits.length > 0) {
@@ -533,7 +534,7 @@ export default function ChillerPlantDetail() {
     }
     // Fetch Cold Room Units
     try {
-      const r6 = await fetch('/api/chiller/cold-room');
+      const r6 = await fetch(API_BASE + '/api/chiller/cold-room');
       if (r6.ok) {
         const crUnits = await r6.json();
         if (crUnits && crUnits.length > 0) {
@@ -545,24 +546,24 @@ export default function ChillerPlantDetail() {
     }
 
     try {
-      const rs = await fetch('/api/chiller/staff');
+      const rs = await fetch(API_BASE + '/api/chiller/staff');
       if (rs.ok) { const d = await rs.json(); setStaff(d || []); }
     } catch(e) {}
     try {
-      const re = await fetch('/api/chiller/equipment');
+      const re = await fetch(API_BASE + '/api/chiller/equipment');
       if (re.ok) { const d = await re.json(); setEquipments(d || []); }
     } catch(e) {}
     try {
-      const rps = await fetch('/api/chiller/plant-specs');
+      const rps = await fetch(API_BASE + '/api/chiller/plant-specs');
       if (rps.ok) { const d = await rps.json(); setPlantSpecifications(d || []); }
     } catch(e) {}
     try {
-      const rus = await fetch('/api/chiller/unit-specs');
+      const rus = await fetch(API_BASE + '/api/chiller/unit-specs');
       if (rus.ok) { const d = await rus.json(); setUnitSpecifications(d || []); }
     } catch(e) {}
     // Fetch Breakdowns
     try {
-      const r7 = await fetch('/api/chiller/breakdowns');
+      const r7 = await fetch(API_BASE + '/api/chiller/breakdowns');
       if (r7.ok) {
         const bd = await r7.json();
         if (bd) {
@@ -582,7 +583,7 @@ export default function ChillerPlantDetail() {
       avgCoolingLoadTr: updates.avgCoolingLoadTr !== undefined ? updates.avgCoolingLoadTr : avgCoolingLoadTr,
     };
     try {
-      await fetch('/api/chiller/update-billing', {
+      await fetch(API_BASE + '/api/chiller/update-billing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

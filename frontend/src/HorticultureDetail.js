@@ -1,3 +1,4 @@
+import { API_BASE } from './config';
 import React, { useEffect, useState, useMemo } from 'react';
 import {
   BarChart,
@@ -21,7 +22,7 @@ export default function HorticultureDetail({ currentUser }) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch('/api/horticulture');
+        const res = await fetch(API_BASE + '/api/horticulture');
         if (res.ok) {
           const json = await res.json();
           setData(json);

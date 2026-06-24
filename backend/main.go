@@ -191,6 +191,7 @@ func main() {
 
 	// Auth routes
 	http.HandleFunc("/api/login", lm(api.Login))
+	http.HandleFunc("/api/auth/google", lm(api.GoogleLogin))
 	http.HandleFunc("/api/users", lm(api.GetUsers))
 	http.HandleFunc("/api/users/update", lm(api.AddOrUpdateUser))
 	http.HandleFunc("/api/users/delete", lm(api.DeleteUser))

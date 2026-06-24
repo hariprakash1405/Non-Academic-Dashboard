@@ -1,3 +1,4 @@
+import { API_BASE } from './config';
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area, ComposedChart } from 'recharts';
 import jsPDF from 'jspdf';
@@ -132,7 +133,7 @@ export default function PlumbingDetail() {
   const totalWell = sourceData.reduce((sum, d) => sum + d.well, 0);
 
   const fetchData = () => {
-    fetch('/api/plumbing')
+    fetch(API_BASE + '/api/plumbing')
       .then(res => res.json())
       .then(data => {
         if (data) {

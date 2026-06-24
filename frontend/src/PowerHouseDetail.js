@@ -1,3 +1,4 @@
+import { API_BASE } from './config';
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   XAxis,
@@ -169,7 +170,7 @@ export default function PowerHouseDetail() {
   }, [selectedDate]);
 
   const fetchTrendData = useCallback(() => {
-    fetch(`/api/powerhouse/trend?month=${selectedMonth}`)
+    fetch(API_BASE + `/api/powerhouse/trend?month=${selectedMonth}`)
       .then(res => res.json())
       .then(data => {
         if (data) {
@@ -227,15 +228,48 @@ export default function PowerHouseDetail() {
                     (phData?.solarDynamic && phData.solarDynamic.length > 0) ||
                     (phData?.dgDynamic && phData.dgDynamic.length > 0);
     if (hasData) {
+      // Pre-calculate daily totals for non-hourly data to distribute evenly in the chart
+      let totalSolarDaily = 0;
+      let totalDGDaily = 0;
+
+      if (phData?.solarDynamic) {
+        phData.solarDynamic.forEach(d => {
+          totalSolarDaily += parseFloat(d.generation) || 0;
+        });
+      }
+      if (phData?.dgDynamic) {
+        phData.dgDynamic.forEach(d => {
+          totalDGDaily += parseFloat(d.value) || 0;
+        });
+      }
+
+      const isSolarHourly = phData?.solarDynamic && phData.solarDynamic.length > 0 && phData.solarDynamic[0].hour.includes(':');
+      const isDGHourly = phData?.dgDynamic && phData.dgDynamic.length > 0 && phData.dgDynamic[0].hour.includes(':');
+
+      // Distribute solar over 13 hours (6AM to 6PM)
+      const avgSolarPerHour = isSolarHourly ? 0 : (totalSolarDaily / 13);
+      // Distribute DG over 24 hours
+      const avgDGPerHour = isDGHourly ? 0 : (totalDGDaily / 24);
+
       return Array.from({ length: 24 }, (_, i) => {
         const hr = `${i.toString().padStart(2, '0')}:00`;
         const ebItem = phData.ebDynamic?.find(d => d.hour === hr);
-        const solarItem = phData.solarDynamic?.find(d => d.hour === hr);
-        const dgItem = phData.dgDynamic?.find(d => d.hour === hr);
+        
+        // If we find an exact hour match, use it. Otherwise use the distributed average (only for summary data).
+        const exactSolarItem = phData.solarDynamic?.find(d => d.hour === hr);
+        const exactDgItem = phData.dgDynamic?.find(d => d.hour === hr);
         
         const ebVal = parseFloat(ebItem?.value) || 0;
-        const solarVal = parseFloat(solarItem?.generation) || 0;
-        const dgVal = parseFloat(dgItem?.value) || 0;
+        
+        // Solar is only active between 6 AM (i=6) and 6 PM (i=18)
+        let solarVal = 0;
+        if (exactSolarItem) {
+          solarVal = parseFloat(exactSolarItem.generation) || 0;
+        } else if (!isSolarHourly && i >= 6 && i <= 18) {
+          solarVal = avgSolarPerHour;
+        }
+
+        const dgVal = exactDgItem ? (parseFloat(exactDgItem.value) || 0) : avgDGPerHour;
         
         return {
           hour: hr,
@@ -356,7 +390,7 @@ export default function PowerHouseDetail() {
     let color = '';
     
     if (type === 'solar') {
-      const solarTotal = computedCombined.reduce((sum, d) => sum + d.solar, 0);
+      const solarTotal = computedSolar.reduce((sum, d) => sum + d.generation, 0);
       const solarMonthly = (trendData.monthly || []).reduce((sum, d) => sum + (d.solar || 0), 0);
       daily = `₹${(solarTotal * 5.3).toFixed(0)} Savings`;
       monthly = `₹${(solarMonthly * 5.3).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Savings`;
@@ -368,7 +402,7 @@ export default function PowerHouseDetail() {
       monthly = `₹${(dgMonthlyFuel * 98).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
       color = '#ea580c';
     } else if (type === 'eb') {
-      const ebTotal = computedCombined.reduce((sum, d) => sum + d.eb, 0);
+      const ebTotal = computedEB.reduce((sum, d) => sum + d.consumption, 0);
       const ebMonthly = (trendData.monthly || []).reduce((sum, d) => sum + (d.eb || 0), 0);
       daily = `₹${(ebTotal * 5.3).toFixed(0)}`;
       monthly = `₹${(ebMonthly * 5.3).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
@@ -579,7 +613,7 @@ export default function PowerHouseDetail() {
   };
 
   const renderEB = () => {
-    const ebTotal = computedCombined.reduce((sum, d) => sum + d.eb, 0);
+    const ebTotal = computedEB.reduce((sum, d) => sum + d.consumption, 0);
     const displayEbTotal = ebTotal > 0 ? `${ebTotal.toFixed(0)} Units` : '0 Units';
     const displayEstBill = ebTotal > 0 ? `Estimated: ₹${(ebTotal * 5.3).toFixed(0)}` : 'Estimated: ₹0';
     
@@ -794,7 +828,7 @@ export default function PowerHouseDetail() {
     const chartData = isMonth ? (trendData.monthly || []) : computedDailyPower;
     const xKey = isMonth ? 'month' : 'date';
 
-    const solarTotal = computedCombined.reduce((sum, d) => sum + d.solar, 0);
+    const solarTotal = computedSolar.reduce((sum, d) => sum + d.generation, 0);
     const displaySolarTotal = solarTotal > 0 ? `${solarTotal.toFixed(0)} Units` : '0 Units';
 
     const solarUsageTotal = computedSolar.reduce((sum, d) => sum + d.consumption, 0);
@@ -910,14 +944,14 @@ export default function PowerHouseDetail() {
     const peakLoadMw = (peakLoadKwh / 1000).toFixed(2);
     const displayPeakMw = peakLoadMw > 0 ? `${peakLoadMw} MW` : '0 MW';
 
-    const totalEnergy = computedCombined.reduce((sum, d) => sum + d.total, 0);
-    const solarTotalForMix = computedCombined.reduce((sum, d) => sum + d.solar, 0);
-    const solarMixPct = totalEnergy > 0 ? Math.round((solarTotalForMix / totalEnergy) * 100) : 0;
+    const ebTotalForDist = computedEB.reduce((sum, d) => sum + d.consumption, 0);
+    const solarTotalForMix = computedSolar.reduce((sum, d) => sum + d.generation, 0);
+    const dgTotalForDist = computedDG.reduce((sum, d) => sum + d.consumption, 0);
+    const totalMixForDist = ebTotalForDist + solarTotalForMix + dgTotalForDist;
+
+    const solarMixPct = totalMixForDist > 0 ? Math.round((solarTotalForMix / totalMixForDist) * 100) : 0;
     const displaySolarMix = `${solarMixPct}%`;
 
-    const ebTotalForDist = computedCombined.reduce((sum, d) => sum + d.eb, 0);
-    const dgTotalForDist = computedCombined.reduce((sum, d) => sum + d.dg, 0);
-    const totalMixForDist = ebTotalForDist + solarTotalForMix + dgTotalForDist;
     const ebPct = totalMixForDist > 0 ? Math.round((ebTotalForDist / totalMixForDist) * 100) : 0;
     const solarPct = totalMixForDist > 0 ? Math.round((solarTotalForMix / totalMixForDist) * 100) : 0;
     const dgPct = totalMixForDist > 0 ? Math.round((dgTotalForDist / totalMixForDist) * 100) : 0;
